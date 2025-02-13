@@ -1,99 +1,109 @@
-#![cfg_attr(
-  all(not(debug_assertions), target_os = "windows"),
-  windows_subsystem = "windows"
-)]
+// Prevents additional console window on Windows in release, DO NOT REMOVE!!
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::process::Command;
-use std::io::{BufReader, BufRead};
-use std::path::Path;
-use tauri::{Emitter, Window};
+use directories::UserDirs;
+use youtube_dl::YoutubeDl;
+use serde::Serialize;
 
 #[tauri::command]
-async fn download_video(window: Window, url: String, output_path: String) -> Result<String, String> {
-    // output_path が空の場合は yt-dlp -e によりタイトルを取得し、ファイル名とする
-    let file_name = if output_path.trim().is_empty() {
-        let output = Command::new("yt-dlp")
-            .args(&["--no-config", "-e", &url])
-            .output()
-            .map_err(|e| format!("yt-dlp 実行エラー (title取得): {}", e))?;
-        if !output.status.success() {
-            return Err(format!(
-                "yt-dlp エラー (title取得): {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-        let title = String::from_utf8(output.stdout)
-            .map_err(|e| format!("yt-dlp 出力パースエラー: {}", e))?
-            .trim()
-            .to_string();
-        format!("{}.mp4", title)
-    } else {
-        output_path.clone()
-    };
+async fn download_metadata(url: String) -> Result<String, String> {
+  println!("Downloading metadata: {}", url);
 
-    // 出力パスが絶対パスでなければ、システムのダウンロードフォルダに結合する
-    let full_output_path = {
-        let path = Path::new(&file_name);
-        if path.is_absolute() {
-            file_name
-        } else {
-            match dirs::download_dir() {
-                Some(download_dir) => download_dir.join(file_name).to_string_lossy().into_owned(),
-                None => return Err("ダウンロードフォルダが見つかりません".to_string()),
-            }
-        }
-    };
+  let mut instance = YoutubeDl::new(url);
+  let result = instance
+    .socket_timeout("15")
+    .flat_playlist(true)
+    .run_async()
+    .await;
 
-    // yt-dlp の引数リストを組み立てる
-    // --newline オプションを追加して、進捗出力が改行区切りになるようにする
-    let args = vec![
-        "--no-config".to_string(),
-        "--newline".to_string(),
-        "--merge-output-format".to_string(),
-        "mp4".to_string(),
-        "-o".to_string(),
-        full_output_path.clone(),
-        url.clone(),
-    ];
+  println!("Downloaded metadata");
 
-    // yt-dlp プロセスを spawn し、stderr から進捗情報を取得
-    let mut child = Command::new("yt-dlp")
-        .args(&args)
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("yt-dlp spawn エラー: {}", e))?;
+  match result {
+    Ok(metadata) => Ok(match metadata.clone().into_playlist() {
+      Some(playlist) => playlist.title.unwrap_or("No Title".to_string()),
+      None => match metadata.into_single_video() {
+        Some(video) => video.title.unwrap_or("No Title".to_string()),
+        None => return Err("Error getting title".to_string()),
+      },
+    }),
+    Err(e) => Err(e.to_string()),
+  }
+}
 
-    if let Some(stderr) = child.stderr.take() {
-        let window_clone = window.clone();
-        std::thread::spawn(move || {
-            let reader = BufReader::new(stderr);
-            // lines() イテレータで各行を取得
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    // 例: "[download]  34.5% of 10.00MiB at 1.23MiB/s ETA 00:05"
-                    for token in line.split_whitespace() {
-                        if token.ends_with('%') {
-                            if let Ok(percent_value) = token.trim_end_matches('%').parse::<f32>() {
-                                let _ = window_clone.emit("download-progress", percent_value);
-                            }
-                        }
-                    }
-                }
-            }
-        });
+#[tauri::command]
+async fn download_video(
+  url: String,
+  audio_only: bool,
+  folder_path: Option<String>,
+) -> Result<(), String> {
+  println!("Downloading video: {}", url);
+
+  // 自動でメタデータ取得してタイトルを取得
+  let mut meta_instance = YoutubeDl::new(url.clone());
+  let metadata_result = meta_instance
+    .socket_timeout("15")
+    .flat_playlist(true)
+    .run_async()
+    .await;
+
+  let title = match metadata_result {
+    Ok(metadata) => {
+      match metadata.clone().into_playlist() {
+        Some(playlist) => playlist.title.unwrap_or("No Title".to_string()),
+        None => match metadata.into_single_video() {
+          Some(video) => video.title.unwrap_or("No Title".to_string()),
+          None => return Err("Error getting title".to_string()),
+        },
+      }
     }
+    Err(e) => return Err(e.to_string()),
+  };
 
-    let status = child.wait().map_err(|e| format!("yt-dlp wait エラー: {}", e))?;
-    if status.success() {
-        Ok("ダウンロード成功".to_string())
-    } else {
-        Err("yt-dlp エラー".to_string())
+  // 出力ファイル名生成（audio_only によって拡張子が変わる）
+  let output_filename = format!("{}.{}", title, if audio_only { "mp3" } else { "mp4" });
+
+  let output_path = match folder_path {
+    Some(p) if p.trim() != "" => format!("{}/{}", p.trim_end_matches('/'), output_filename),
+    _ => {
+      match UserDirs::new().and_then(|ud| ud.download_dir().map(|p| p.to_str().unwrap().to_string())) {
+        Some(default_path) => format!("{}/{}", default_path.trim_end_matches('/'), output_filename),
+        None => return Err("Error getting download directory".to_string()),
+      }
     }
+  };
+
+  println!("Output file: {}", output_path);
+
+  let mut instance = YoutubeDl::new(url);
+  if audio_only {
+    instance
+      .extract_audio(true)
+      .extra_arg("--audio-format")
+      .extra_arg("mp3");
+  } else {
+    instance
+      .extra_arg("--merge-output-format")
+      .extra_arg("mp4");
+  }
+
+  // 出力ファイル指定
+  instance.extra_arg("-o").extra_arg(&output_path);
+
+  println!("Starting download...");
+  let result = instance.socket_timeout("15").download_to_async("").await;
+
+  match result {
+    Ok(_) => {
+      println!("Downloaded video successfully.");
+      Ok(())
+    }
+    Err(e) => Err(format!("Error downloading video: {}", e)),
+  }
 }
 
 fn main() {
-    tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![download_video])
-        .run(tauri::generate_context!())
-        .expect("Tauri アプリの起動に失敗しました");
+  tauri::Builder::default()
+    .invoke_handler(tauri::generate_handler![download_video, download_metadata])
+    .run(tauri::generate_context!())
+    .expect("error while running tauri application");
 }

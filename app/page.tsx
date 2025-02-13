@@ -1,47 +1,75 @@
 "use client";
 
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { LoaderCircle } from "lucide-react";
 
+import { DialogSettingPath } from "@/components/dialog-setting-path";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 
 export default function Home() {
   const [url, setUrl] = useState("");
-  const [outputPath, setOutputPath] = useState("");
+  const [folderPath, setFolderPath] = useState("");
+  const [audioOnly, setAudioOnly] = useState(false);
+  const [metadata, setMetadata] = useState<{ title: string } | null>(null);
   const [status, setStatus] = useState("");
-  const [progress, setProgress] = useState(0);
   const [downloading, setDownloading] = useState(false);
+  
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
+  // ローカルストレージから保存先パスを読み込み
   useEffect(() => {
-    const unlistenPromise = listen("download-progress", (event) => {
-      console.log("進捗イベント受信:", event.payload);
-      if (typeof event.payload === "number") {
-        setProgress(event.payload);
-      }
-    });
-    return () => {
-      unlistenPromise.then((unlisten) => unlisten());
-    };
+    const storedPath = localStorage.getItem("folderPath");
+    if (storedPath) {
+      setFolderPath(storedPath);
+    }
   }, []);
 
+  // 保存先パスが変更されたらローカルストレージに保存
+  useEffect(() => {
+    localStorage.setItem("folderPath", folderPath);
+  }, [folderPath]);
+
+  // URL 入力後3秒で自動的にメタデータ取得
+  useEffect(() => {
+    if (!url) {
+      setMetadata(null);
+      return;
+    }
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(async () => {
+      try {
+        const title = await invoke<string>("download_metadata", { url });
+        setMetadata({ title });
+      } catch (error) {
+        setStatus(`メタデータ取得エラー: ${error}`);
+      }
+    }, 3000);
+
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
+  }, [url]);
+
   const handleDownload = async () => {
+    if (!url) {
+      setStatus("動画URLを入力してください");
+      return;
+    }
     setStatus("ダウンロード中...");
-    setProgress(0);
     setDownloading(true);
     try {
-      // Rust 側の download_video コマンドを呼び出す
-      // outputPath が空の場合、Rust 側でタイトルからファイル名生成＋システムのダウンロードフォルダが利用される
+      // download_video コマンドは、メタデータ取得も内部で行うので、外部からは folderPath と audioOnly を渡すだけでよい
       const result = await invoke<string>("download_video", {
         url,
-        outputPath,
+        audioOnly,
+        folderPath: folderPath === "" ? null : folderPath,
       });
       setStatus(result);
     } catch (error) {
-      setStatus(`エラー: ${error}`);
+      setStatus(`ダウンロードエラー: ${error}`);
     } finally {
       setDownloading(false);
     }
@@ -49,7 +77,10 @@ export default function Home() {
 
   return (
     <main className="px-6 py-4">
-      <h1 className="text-3xl font-bold">Download</h1>
+      <h1 className="text-3xl font-bold">Video Downloader</h1>
+      <div className="mt-4">
+        <DialogSettingPath initialPath={folderPath} onPathChange={setFolderPath} disabled={downloading} />
+      </div>
       <div className="grid w-full gap-6 mt-6">
         <div className="grid w-full max-w-sm items-center gap-1.5">
           <Label htmlFor="url">動画URL:</Label>
@@ -63,30 +94,38 @@ export default function Home() {
           />
         </div>
         <div className="grid w-full max-w-sm items-center gap-1.5">
-          <Label htmlFor="outputPath">
-            出力ファイル名
-            (空の場合はタイトルが使用され、システムのダウンロードフォルダに保存されます):
-          </Label>
+          <Label htmlFor="audioOnly">Audio Only:</Label>
           <Input
-            id="outputPath"
-            type="text"
-            value={outputPath}
-            onChange={(e) => setOutputPath(e.target.value)}
-            placeholder="例: myvideo.mp4"
+            id="audioOnly"
+            type="checkbox"
+            checked={audioOnly}
+            onChange={(e) => setAudioOnly(e.target.checked)}
             disabled={downloading}
           />
         </div>
       </div>
       <div className="mt-5">
-        <Button onClick={handleDownload} disabled={downloading}>
-          {downloading ? "ダウンロード中..." : "ダウンロード開始"}
+        <Button onClick={handleDownload} disabled={downloading || !url}>
+          {downloading ? (
+            <div className="flex items-center gap-2">
+              <LoaderCircle className="animate-spin h-5 w-5" />
+              ダウンロード中...
+            </div>
+          ) : (
+            "ダウンロード開始"
+          )}
         </Button>
       </div>
-      <div className="mt-6">
-        <Progress value={progress} />
-        <p>{progress.toFixed(1)}%</p>
+      {metadata && (
+        <div className="mt-4">
+          <p>
+            <strong>タイトル:</strong> {metadata.title}
+          </p>
+        </div>
+      )}
+      <div className="mt-4">
+        <p>{status}</p>
       </div>
-      <p className="mt-2">{status}</p>
     </main>
   );
 }
