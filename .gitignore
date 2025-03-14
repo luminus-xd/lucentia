@@ -42,3 +42,6 @@ next-env.d.ts
 
 # cline
 .clinerules
+
+# Tauri
+src-tauri/gen
