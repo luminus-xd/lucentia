@@ -6,19 +6,22 @@ Video Downloader は、Tauri と Next.js を利用して構築されたデスク
 
 ## 主な機能
 
-- **動画ダウンロード**  
+- **動画ダウンロード**
   YouTube や bilibili の URL を指定して動画をダウンロード可能です。
 
-- **自動出力ファイル名**  
+- **自動出力ファイル名**
   出力ファイル名を省略した場合、動画のタイトルを取得してファイル名として使用します。
 
-- **bilibili 対応**  
+- **yt-dlp の自動ダウンロード**
+  アプリケーション起動時に yt-dlp が自動的にダウンロードされるため、事前のインストールが不要です。
+
+- **bilibili 対応**
   bilibili の URL が入力された場合、自動的に "--cookies-from-browse firefox" オプションを付与してダウンロードを行います。
 
-- **進捗表示**  
+- **進捗表示**
   ダウンロード進捗を HTML の `<progress>` 要素で表示し、リアルタイムに更新します。
 
-- **ダウンロード中の UI 制御**  
+- **ダウンロード中の UI 制御**
   ダウンロード中は入力フォームおよびダウンロードボタンが無効化され、誤操作を防止します。
 
 ## 技術スタック
@@ -38,10 +41,8 @@ Video Downloader は、Tauri と Next.js を利用して構築されたデスク
 
 - [Node.js](https://nodejs.org/)
 - [Rust](https://www.rust-lang.org/tools/install)
-- [Tauri CLI](https://tauri.app/v1/guides/getting-started/intro/)  
+- [Tauri CLI](https://tauri.app/v1/guides/getting-started/intro/)
   ※ `npm install -g @tauri-apps/cli` でインストール
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp)  
-  ※ 公式リポジトリの手順に従ってインストール
 
 ### プロジェクトのクローンとセットアップ
 

@@ -3,14 +3,22 @@
 
 use directories::UserDirs;
 use std::env;
-use youtube_dl::YoutubeDl;
+use std::path::PathBuf;
+use youtube_dl::{YoutubeDl, downloader::download_yt_dlp};
 use serde::Serialize;
 
 #[tauri::command]
 async fn download_metadata(url: String) -> Result<String, String> {
     println!("Downloading metadata: {}", url);
 
+    // yt-dlpバイナリのパスを取得
+    let yt_dlp_path = get_yt_dlp_path().await?;
+
     let mut instance = YoutubeDl::new(url);
+    
+    // カスタムパスのyt-dlpバイナリを使用
+    instance.youtube_dl_path(&yt_dlp_path);
+    
     let result = instance
         .socket_timeout("15")
         .flat_playlist(true)
@@ -41,8 +49,14 @@ async fn download_video(
 ) -> Result<(), String> {
     println!("Downloading video: {}", url);
 
+    // yt-dlpバイナリのパスを取得
+    let yt_dlp_path = get_yt_dlp_path().await?;
+
     // メタデータからタイトルを取得
     let mut meta_instance = YoutubeDl::new(url.clone());
+    // カスタムパスのyt-dlpバイナリを使用
+    meta_instance.youtube_dl_path(&yt_dlp_path);
+    
     let metadata_result = meta_instance
         .socket_timeout("15")
         .flat_playlist(true)
@@ -78,6 +92,9 @@ async fn download_video(
     println!("Output file: {}", output_path);
 
     let mut instance = YoutubeDl::new(url);
+    // カスタムパスのyt-dlpバイナリを使用
+    instance.youtube_dl_path(&yt_dlp_path);
+    
     if audio_only {
         instance
             .extract_audio(true)
@@ -112,9 +129,57 @@ fn get_default_download_path(filename: &str) -> Result<String, String> {
         .ok_or_else(|| "Error getting download directory".to_string())
 }
 
+/// yt-dlpバイナリのパスを取得する関数
+/// アプリケーションのデータディレクトリにyt-dlpバイナリが存在するかチェックし、
+/// 存在しない場合はダウンロードします。
+async fn get_yt_dlp_path() -> Result<PathBuf, String> {
+    // アプリケーションのデータディレクトリを取得
+    let app_data_dir = dirs::data_dir()
+        .ok_or_else(|| "アプリケーションデータディレクトリの取得に失敗しました".to_string())?
+        .join("my-video-downloader");
+    
+    // ディレクトリが存在しない場合は作成
+    if !app_data_dir.exists() {
+        std::fs::create_dir_all(&app_data_dir)
+            .map_err(|e| format!("ディレクトリの作成に失敗しました: {}", e))?;
+    }
+    
+    // yt-dlpバイナリのパス
+    let yt_dlp_path = app_data_dir.join(if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" });
+    
+    // yt-dlpバイナリが存在するかチェック
+    if !yt_dlp_path.exists() {
+        println!("yt-dlpバイナリをダウンロードしています...");
+        
+        // yt-dlpバイナリをダウンロード
+        match download_yt_dlp(&app_data_dir).await {
+            Ok(path) => {
+                println!("yt-dlpバイナリをダウンロードしました: {:?}", path);
+                
+                // Unixシステムでは実行権限を付与
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let metadata = std::fs::metadata(&path)
+                        .map_err(|e| format!("メタデータの取得に失敗しました: {}", e))?;
+                    let mut perms = metadata.permissions();
+                    perms.set_mode(0o755); // rwxr-xr-x
+                    std::fs::set_permissions(&path, perms)
+                        .map_err(|e| format!("権限の設定に失敗しました: {}", e))?;
+                }
+                
+                Ok(path)
+            },
+            Err(e) => Err(format!("yt-dlpバイナリのダウンロードに失敗しました: {}", e)),
+        }
+    } else {
+        println!("既存のyt-dlpバイナリを使用します: {:?}", yt_dlp_path);
+        Ok(yt_dlp_path)
+    }
+}
+
 fn main() {
-    // GUIアプリ起動時は、シェルの初期設定が読み込まれないため、PATHを明示的に設定する
-    // brewでインストールしたyt-dlpがあるパス（例: /usr/local/bin, /opt/homebrew/bin）を先頭に追加
+    // 従来のPATH設定も残しておく（ダウンロードに失敗した場合のフォールバック用）
     let brew_paths = "/usr/local/bin:/opt/homebrew/bin";
     let current_path = env::var("PATH").unwrap_or_default();
     let new_path = format!("{}:{}", brew_paths, current_path);
@@ -122,6 +187,20 @@ fn main() {
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![download_video, download_metadata])
+        .setup(|_app| {
+            // yt-dlpバイナリのダウンロードを非同期で実行
+            // setupはsyncなので、新しいスレッドで実行
+            std::thread::spawn(|| {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(async {
+                    match get_yt_dlp_path().await {
+                        Ok(_) => println!("yt-dlpバイナリの準備が完了しました"),
+                        Err(e) => eprintln!("yt-dlpバイナリの準備に失敗しました: {}", e),
+                    }
+                });
+            });
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
