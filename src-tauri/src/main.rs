@@ -41,11 +41,21 @@ async fn download_metadata(url: String) -> Result<String, String> {
     }
 }
 
+#[derive(Serialize)]
+struct VideoFormat {
+    format_id: String,
+    ext: String,
+    resolution: String,
+}
+
 #[tauri::command]
 async fn download_video(
     url: String,
     audio_only: bool,
     folder_path: Option<String>,
+    best_quality: bool,
+    download_subtitles: bool,
+    preferred_format: Option<String>,
 ) -> Result<(), String> {
     println!("Downloading video: {}", url);
 
@@ -99,11 +109,34 @@ async fn download_video(
         instance
             .extract_audio(true)
             .extra_arg("--audio-format")
-            .extra_arg("mp3");
+            .extra_arg("mp3")
+            .extra_arg("--audio-quality")
+            .extra_arg("0"); // 最高音質
     } else {
+        // ビデオダウンロードの設定
+        if best_quality {
+            instance
+                .format("bestvideo+bestaudio/best") // 最高品質のビデオ+音声
+                .extra_arg("--merge-output-format")
+                .extra_arg(preferred_format.unwrap_or("mp4".to_string()));
+        } else {
+            instance
+                .format("best") // デフォルトの高品質
+                .extra_arg("--merge-output-format")
+                .extra_arg(preferred_format.unwrap_or("mp4".to_string()));
+        }
+    }
+
+    // 字幕のダウンロード設定
+    if download_subtitles {
         instance
-            .extra_arg("--merge-output-format")
-            .extra_arg("mp4");
+            .extra_arg("--write-sub")           // 字幕をダウンロード
+            .extra_arg("--write-auto-sub")      // 自動生成字幕もダウンロード
+            .extra_arg("--sub-format")
+            .extra_arg("srt")
+            .extra_arg("--embed-subs")          // 字幕を動画に埋め込む
+            .extra_arg("--sub-lang")
+            .extra_arg("ja,en");                // 日本語と英語の字幕を優先
     }
 
     // 出力ファイルのパス指定

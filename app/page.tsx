@@ -9,11 +9,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 export default function Home() {
   const [url, setUrl] = useState("");
   const [folderPath, setFolderPath] = useState("");
   const [audioOnly, setAudioOnly] = useState(false);
+  const [bestQuality, setBestQuality] = useState(true);
+  const [downloadSubtitles, setDownloadSubtitles] = useState(false);
+  const [preferredFormat, setPreferredFormat] = useState<string>("mp4");
   const [metadata, setMetadata] = useState<{ title: string } | null>(null);
   const [status, setStatus] = useState("");
   const [downloading, setDownloading] = useState(false);
@@ -88,6 +99,9 @@ export default function Home() {
         url,
         audioOnly,
         folderPath: folderPath === "" ? null : folderPath,
+        bestQuality: !audioOnly && bestQuality,
+        downloadSubtitles: !audioOnly && downloadSubtitles,
+        preferredFormat: !audioOnly ? preferredFormat : null,
       });
       setStatus(result);
     } catch (error) {
@@ -131,21 +145,70 @@ export default function Home() {
               </div>
             </div>
             
-            <div className="flex items-center space-x-2">
-              <div className="flex items-center space-x-2">
-                <input
-                  id="audioOnly"
-                  type="checkbox"
-                  checked={audioOnly}
-                  onChange={(e) => setAudioOnly(e.target.checked)}
-                  disabled={downloading}
-                  className="rounded border-input/50 bg-muted/50 h-4 w-4"
-                />
-                <Label htmlFor="audioOnly" className="text-sm font-medium flex items-center gap-1.5">
-                  <Music className="h-4 w-4" />
-                  音声のみ
-                </Label>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
+                  <div className="flex items-center gap-2">
+                    <Music className="h-4 w-4" />
+                    <Label htmlFor="audioOnly" className="text-sm font-medium">
+                      音声のみ
+                    </Label>
+                  </div>
+                  <Switch
+                    id="audioOnly"
+                    checked={audioOnly}
+                    onCheckedChange={setAudioOnly}
+                    disabled={downloading}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
+                  <div className="flex items-center gap-2">
+                    <Video className="h-4 w-4" />
+                    <Label htmlFor="bestQuality" className="text-sm font-medium">
+                      最高品質
+                    </Label>
+                  </div>
+                  <Switch
+                    id="bestQuality"
+                    checked={bestQuality}
+                    onCheckedChange={setBestQuality}
+                    disabled={downloading || audioOnly}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-muted/10">
+                  <Label htmlFor="downloadSubtitles" className="text-sm font-medium">
+                    字幕をダウンロード
+                  </Label>
+                  <Switch
+                    id="downloadSubtitles"
+                    checked={downloadSubtitles}
+                    onCheckedChange={setDownloadSubtitles}
+                    disabled={downloading || audioOnly}
+                  />
+                </div>
               </div>
+
+              {!audioOnly && (
+                <div className="p-3 rounded-lg border border-border/40 bg-muted/10">
+                  <Label className="text-sm font-medium mb-2 block">フォーマット</Label>
+                  <Select
+                    value={preferredFormat}
+                    onValueChange={setPreferredFormat}
+                    disabled={downloading}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="フォーマットを選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="mp4">MP4</SelectItem>
+                      <SelectItem value="mkv">MKV</SelectItem>
+                      <SelectItem value="webm">WebM</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
             
             <div>
