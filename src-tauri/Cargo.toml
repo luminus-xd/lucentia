@@ -1,5 +1,5 @@
 [package]
-name = "my_video_downloader"
+name = "lucentia"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
@@ -11,7 +11,7 @@ rust-version = "1.77.2"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "my_video_downloader_lib"
+name = "lucentia_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

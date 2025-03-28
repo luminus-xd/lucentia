@@ -1,8 +1,8 @@
 {
 	"$schema": "https://schema.tauri.app/config/2.0.0-rc",
-	"productName": "my-video-downloader",
+	"productName": "lucentia",
 	"version": "0.1.0",
-	"identifier": "com.myvideodownloader.app",
+	"identifier": "com.lucentia.app",
 	"build": {
 		"frontendDist": "../out",
 		"devUrl": "http://localhost:3000",
@@ -12,7 +12,7 @@
 	"app": {
 		"windows": [
 			{
-				"title": "my-video-downloader",
+				"title": "lucentia",
 				"width": 800,
 				"height": 600,
 				"resizable": true,

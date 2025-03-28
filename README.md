@@ -1,6 +1,6 @@
-# Video Downloader
+# Lucentia
 
-Video Downloader は、Tauri と Next.js を利用して構築されたデスクトップアプリケーションです。
+Lucentia は、Tauri と Next.js を利用して構築されたデスクトップアプリケーションです。
 このアプリケーションは yt-dlp を利用して、YouTube などの動画をダウンロードします。
 出力形式は MP4 で、ダウンロード進捗はリアルタイムに表示されます。
 

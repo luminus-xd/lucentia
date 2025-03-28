@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-	title: "Video Downloader",
+	title: "Lucentia",
 	description: "シンプルで使いやすい動画ダウンローダー",
 };
 
