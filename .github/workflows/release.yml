@@ -11,32 +11,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  create-release:
-    permissions:
-      contents: write
-    runs-on: ubuntu-20.04
-    outputs:
-      release_id: ${{ steps.create-release.outputs.result }}
-
-    steps:
-      - name: リリース作成（タグがプッシュされた場合のみ）
-        id: create-release
-        uses: actions/github-script@v6
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          script: |
-            const { data } = await github.rest.repos.createRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag_name: context.ref.replace('refs/tags/', ''),
-              name: context.ref.replace('refs/tags/', ''),
-              draft: true,
-              prerelease: false
-            });
-            return data.id
-
   build:
-    needs: create-release
     permissions:
       contents: write
     strategy:
@@ -80,11 +55,16 @@ jobs:
 
       # ビルド
       - name: Tauriビルド
+        id: tauri-build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          releaseId: ${{ needs.create-release.outputs.release_id }}
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Lucentia ${{ github.ref_name }}'
+          releaseBody: 'リリースノートは後で追加されます'
+          releaseDraft: true
+          prerelease: false
           # Windowsでマイクロソフト証明書を使用する場合は以下をアンコメント
           # windowsCodeSigningPfxBase64: ${{ secrets.WINDOWS_PFX_BASE64 }}
           # windowsCodeSigningPfxPassword: ${{ secrets.WINDOWS_PFX_PASSWORD }}
