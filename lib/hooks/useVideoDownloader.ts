@@ -1,6 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 
+export interface VideoMetadata {
+  title: string;
+  thumbnail?: string;
+  duration?: string;
+}
+
 export interface VideoDownloaderState {
   url: string;
   folderPath: string;
@@ -8,7 +14,7 @@ export interface VideoDownloaderState {
   bestQuality: boolean;
   downloadSubtitles: boolean;
   preferredFormat: string;
-  metadata: { title: string } | null;
+  metadata: VideoMetadata | null;
   status: string;
   downloading: boolean;
   progress: number;
@@ -31,7 +37,7 @@ export function useVideoDownloader(): VideoDownloaderState & VideoDownloaderActi
   const [bestQuality, setBestQuality] = useState(true);
   const [downloadSubtitles, setDownloadSubtitles] = useState(false);
   const [preferredFormat, setPreferredFormat] = useState<string>("mp4");
-  const [metadata, setMetadata] = useState<{ title: string } | null>(null);
+  const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
   const [status, setStatus] = useState("");
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -51,7 +57,7 @@ export function useVideoDownloader(): VideoDownloaderState & VideoDownloaderActi
     localStorage.setItem("folderPath", folderPath);
   }, [folderPath]);
 
-  // URL 入力後3秒で自動的にメタデータ取得
+  // URL 入力後1.5秒で自動的にメタデータ取得
   useEffect(() => {
     if (!url) {
       setMetadata(null);
@@ -60,13 +66,13 @@ export function useVideoDownloader(): VideoDownloaderState & VideoDownloaderActi
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(async () => {
       try {
-        const title = await invoke<string>("download_metadata", { url });
-        setMetadata({ title });
+        const result = await invoke<VideoMetadata>("download_metadata", { url });
+        setMetadata(result);
         setStatus("メタデータを取得しました");
       } catch (error) {
         setStatus(`メタデータ取得エラー: ${error}`);
       }
-    }, 3000);
+    }, 1500);
 
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);

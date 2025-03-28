@@ -7,8 +7,15 @@ use std::path::PathBuf;
 use youtube_dl::{YoutubeDl, downloader::download_yt_dlp};
 use serde::Serialize;
 
+#[derive(Serialize)]
+struct VideoMetadata {
+    title: String,
+    thumbnail: Option<String>,
+    duration: Option<String>,
+}
+
 #[tauri::command]
-async fn download_metadata(url: String) -> Result<String, String> {
+async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
     println!("Downloading metadata: {}", url);
 
     // yt-dlpバイナリのパスを取得
@@ -30,9 +37,47 @@ async fn download_metadata(url: String) -> Result<String, String> {
     match result {
         Ok(metadata) => {
             if let Some(playlist) = metadata.clone().into_playlist() {
-                Ok(playlist.title.unwrap_or_else(|| "No Title".to_string()))
+                let thumbnail = playlist.thumbnails
+                    .and_then(|thumbs| thumbs.first().cloned())
+                    .and_then(|thumb| thumb.url);
+                    
+                println!("プレイリストサムネイル: {:?}", thumbnail);
+                
+                Ok(VideoMetadata {
+                    title: playlist.title.unwrap_or_else(|| "No Title".to_string()),
+                    thumbnail,
+                    duration: None,
+                })
             } else if let Some(video) = metadata.into_single_video() {
-                Ok(video.title.unwrap_or_else(|| "No Title".to_string()))
+                let thumbnail = video.thumbnail.or_else(|| {
+                    video.thumbnails
+                        .and_then(|thumbs| thumbs.first().cloned())
+                        .and_then(|thumb| thumb.url)
+                });
+                
+                println!("ビデオサムネイル: {:?}", thumbnail);
+                
+                // durationを安全に変換
+                let duration = video.duration.and_then(|d| {
+                    if let Some(seconds) = d.as_u64() {
+                        Some(format!("{:02}:{:02}", seconds / 60, seconds % 60))
+                    } else if let Some(seconds) = d.as_f64() {
+                        let seconds = seconds as u64;
+                        Some(format!("{:02}:{:02}", seconds / 60, seconds % 60))
+                    } else if let Some(s) = d.as_str() {
+                        s.parse::<u64>().ok().map(|seconds| {
+                            format!("{:02}:{:02}", seconds / 60, seconds % 60)
+                        })
+                    } else {
+                        None
+                    }
+                });
+                
+                Ok(VideoMetadata {
+                    title: video.title.unwrap_or_else(|| "No Title".to_string()),
+                    thumbnail,
+                    duration,
+                })
             } else {
                 Err("Error getting title".to_string())
             }
