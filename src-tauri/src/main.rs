@@ -3,9 +3,11 @@
 
 use directories::UserDirs;
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use youtube_dl::{YoutubeDl, downloader::download_yt_dlp};
 use serde::Serialize;
+use std::ffi::OsStr;
+use regex::Regex;
 
 #[derive(Serialize)]
 struct VideoMetadata {
@@ -14,9 +16,69 @@ struct VideoMetadata {
     duration: Option<String>,
 }
 
+/// URLが有効かどうかを確認する関数
+fn is_valid_url(url: &str) -> bool {
+    let url_regex = Regex::new(r"^(https?://)(www\.)?([a-zA-Z0-9][-a-zA-Z0-9]*\.)+[a-zA-Z0-9]+(/[-a-zA-Z0-9%_.~#+]*)*(\?[;&a-zA-Z0-9%_.~+=-]*)?").unwrap();
+    url_regex.is_match(url)
+}
+
+/// ファイル名を安全にする関数
+fn sanitize_filename(input: &str) -> String {
+    // ファイルシステムで問題となる可能性のある文字を置換
+    let invalid_chars = regex::Regex::new(r#"[<>:"/\\|?*]"#).unwrap();
+    let sanitized = invalid_chars.replace_all(input, "_").to_string();
+    
+    // 最大長を制限（ファイルシステムによって異なる可能性があるが、
+    // 一般的に安全な値として128文字を使用）
+    if sanitized.len() > 128 {
+        sanitized[..128].to_string()
+    } else {
+        sanitized
+    }
+}
+
+/// パスが安全かどうかを確認する関数
+fn is_safe_path(path: &Path) -> bool {
+    // パスが絶対パスであることを確認
+    if !path.is_absolute() {
+        return false;
+    }
+    
+    // パスが現在のディレクトリの上や特権的な場所を指していないことを確認
+    let path_str = path.to_string_lossy();
+    if path_str.contains("..") || path_str.contains("~") {
+        return false;
+    }
+    
+    // Unixシステムでは、/etc, /bin, /sbin などの特権的なディレクトリを避ける
+    #[cfg(unix)]
+    {
+        let sensitive_dirs = ["/etc", "/bin", "/sbin", "/usr/bin", "/usr/sbin"];
+        if sensitive_dirs.iter().any(|dir| path_str.starts_with(dir)) {
+            return false;
+        }
+    }
+    
+    // Windowsシステムでは、システムディレクトリを避ける
+    #[cfg(windows)]
+    {
+        if path_str.to_lowercase().contains("windows") || 
+           path_str.to_lowercase().contains("system32") {
+            return false;
+        }
+    }
+    
+    true
+}
+
 #[tauri::command]
 async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
     println!("Downloading metadata: {}", url);
+    
+    // URL検証
+    if !is_valid_url(&url) {
+        return Err("有効なURLではありません".to_string());
+    }
 
     // yt-dlpバイナリのパスを取得
     let yt_dlp_path = get_yt_dlp_path().await?;
@@ -103,6 +165,11 @@ async fn download_video(
     preferred_format: Option<String>,
 ) -> Result<(), String> {
     println!("Downloading video: {}", url);
+    
+    // URL検証
+    if !is_valid_url(&url) {
+        return Err("有効なURLではありません".to_string());
+    }
 
     // yt-dlpバイナリのパスを取得
     let yt_dlp_path = get_yt_dlp_path().await?;
@@ -130,15 +197,31 @@ async fn download_video(
         }
         Err(e) => return Err(e.to_string()),
     };
+    
+    // タイトルを安全なファイル名に変換
+    let safe_title = sanitize_filename(&title);
 
     // 出力ファイル名生成（audio_only によって拡張子が変わる）
-    let output_filename = format!("{}.{}", title, if audio_only { "mp3" } else { "mp4" });
+    let output_filename = format!("{}.{}", safe_title, if audio_only { "mp3" } else { "mp4" });
 
+    // フォルダパスの検証と安全なパスの構築
     let output_path = if let Some(p) = folder_path {
         if p.trim().is_empty() {
             get_default_download_path(&output_filename)?
         } else {
-            format!("{}/{}", p.trim_end_matches('/'), output_filename)
+            // 提供されたフォルダパスを検証
+            let path = Path::new(&p);
+            if !path.exists() || !path.is_dir() {
+                return Err("指定されたパスが存在しないか、ディレクトリではありません".to_string());
+            }
+            
+            let full_path = path.join(&output_filename);
+            // 安全なパスかどうかを確認
+            if !is_safe_path(&full_path) {
+                return Err("安全でないパスが指定されました".to_string());
+            }
+            
+            full_path.to_string_lossy().to_string()
         }
     } else {
         get_default_download_path(&output_filename)?
@@ -201,10 +284,24 @@ async fn download_video(
 
 /// ダウンロード先ディレクトリが取得できなかった場合の処理を含むヘルパー関数
 fn get_default_download_path(filename: &str) -> Result<String, String> {
-    UserDirs::new()
-        .and_then(|ud| ud.download_dir().and_then(|p| p.to_str().map(String::from)))
-        .map(|default_path| format!("{}/{}", default_path.trim_end_matches('/'), filename))
-        .ok_or_else(|| "Error getting download directory".to_string())
+    let download_dir = UserDirs::new()
+        .and_then(|ud| ud.download_dir().map(PathBuf::from))
+        .ok_or_else(|| "Error getting download directory".to_string())?;
+    
+    // ディレクトリが存在することを確認
+    if !download_dir.exists() || !download_dir.is_dir() {
+        return Err("ダウンロードディレクトリが存在しないか、ディレクトリではありません".to_string());
+    }
+    
+    let full_path = download_dir.join(filename);
+    
+    // 安全なパスかどうかを確認
+    if !is_safe_path(&full_path) {
+        return Err("安全でないパスが生成されました".to_string());
+    }
+    
+    full_path.to_string_lossy().into_owned()
+        .ok_or_else(|| "パスの変換に失敗しました".to_string())
 }
 
 /// yt-dlpバイナリのパスを取得する関数
