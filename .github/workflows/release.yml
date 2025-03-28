@@ -12,11 +12,43 @@ on:
 permissions:
   contents: write
   packages: read
+  issues: write
+  pull-requests: write
 
 jobs:
-  build:
+  create-release:
+    runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      release_id: ${{ steps.create-release.outputs.id }}
+      
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: リリース作成
+        id: create-release
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: context.ref.replace('refs/tags/', ''),
+              name: `Lucentia ${context.ref.replace('refs/tags/', '')}`,
+              draft: true,
+              prerelease: false,
+              generate_release_notes: false
+            });
+            console.log(`Release ID: ${data.id}`);
+            return data.id;
+
+  build:
+    needs: create-release
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
@@ -48,10 +80,12 @@ jobs:
       # ビルド
       - name: Tauriビルド
         id: tauri-build
-        uses: tauri-apps/tauri-action@v0.5.19
+        uses: tauri-apps/tauri-action@v0.5.20
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          # 念のためtagNameも指定
           tagName: ${{ github.ref_name }}
           releaseName: 'Lucentia ${{ github.ref_name }}'
           releaseBody: |
