@@ -10,7 +10,8 @@
 		"start": "next start",
 		"lint": "biome lint --apply ./src",
 		"format": "biome format --write ./src",
-		"tauri": "tauri"
+		"tauri": "tauri",
+		"icon": "tauri icon ./public/logo.png"
 	},
 	"dependencies": {
 		"@radix-ui/react-dialog": "^1.1.6",
