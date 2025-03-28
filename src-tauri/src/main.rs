@@ -6,7 +6,6 @@ use std::env;
 use std::path::{Path, PathBuf};
 use youtube_dl::{YoutubeDl, downloader::download_yt_dlp};
 use serde::Serialize;
-use std::ffi::OsStr;
 use regex::Regex;
 
 #[derive(Serialize)]
@@ -300,8 +299,7 @@ fn get_default_download_path(filename: &str) -> Result<String, String> {
         return Err("安全でないパスが生成されました".to_string());
     }
     
-    full_path.to_string_lossy().into_owned()
-        .ok_or_else(|| "パスの変換に失敗しました".to_string())
+    Ok(full_path.to_string_lossy().to_string())
 }
 
 /// yt-dlpバイナリのパスを取得する関数
