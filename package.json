@@ -8,8 +8,8 @@
 		"build": "next build",
 		"build:tauri": "tauri build",
 		"start": "next start",
-		"lint": "biome lint --apply ./src",
-		"format": "biome format --write ./src",
+		"lint": "biome lint --apply .",
+		"format": "biome format --write .",
 		"tauri": "tauri",
 		"icon": "tauri icon ./public/logo.png"
 	},

@@ -4,7 +4,14 @@
 		"enabled": true
 	},
 	"files": {
-		"include": ["./*.js", "./*.mjs", "./*.ts", "./*.tsx", "./*.json"]
+		"include": [
+			"./*.js",
+			"./*.mjs",
+			"./*.ts",
+			"./*.tsx",
+			"./*.json",
+			"./src/**/*.{js,mjs,ts,tsx,json}"
+		]
 	},
 	"vcs": {
 		"enabled": true,
