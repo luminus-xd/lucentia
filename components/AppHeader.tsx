@@ -1,6 +1,6 @@
 import { Download } from "lucide-react";
 
-import { DialogSettingPath } from "@/components/dialog-setting-path";
+import { DialogSettingPath } from "@/components/DialogSettingPath";
 
 interface AppHeaderProps {
   folderPath: string;
