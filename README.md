@@ -16,10 +16,10 @@ Lucentia は、Tauri と Next.js を利用して構築されたデスクトッ�
   アプリケーション起動時に yt-dlp が自動的にダウンロードされるため、事前のインストールが不要です。
 
 - **bilibili 対応**
-  bilibili の URL が入力された場合、自動的に "--cookies-from-browse firefox" オプションを付与してダウンロードを行います。
+  bilibili の URL が入力された場合、自動的に "--cookies-from-browser firefox" オプションを付与してダウンロードを行います。
 
 - **進捗表示**
-  ダウンロード進捗を HTML の `<progress>` 要素で表示し、リアルタイムに更新します。
+  ダウンロード進捗をリアルタイムに表示します。
 
 - **ダウンロード中の UI 制御**
   ダウンロード中は入力フォームおよびダウンロードボタンが無効化され、誤操作を防止します。
@@ -29,7 +29,7 @@ Lucentia は、Tauri と Next.js を利用して構築されたデスクトッ�
 - **Tauri (Rust)**  
   バックエンド処理、システムのコマンド実行、イベント送信などに利用。
 
-- **Next.js (App Router) (React / TypeScript)**  
+- **Next.js (React / TypeScript)**  
   フロントエンドのユーザーインターフェースを構築。
 
 - **yt-dlp**  
@@ -41,45 +41,37 @@ Lucentia は、Tauri と Next.js を利用して構築されたデスクトッ�
 
 - [Node.js](https://nodejs.org/)
 - [Rust](https://www.rust-lang.org/tools/install)
-- [Tauri CLI](https://tauri.app/v1/guides/getting-started/intro/)
-  ※ `npm install -g @tauri-apps/cli` でインストール
 
-### プロジェクトのクローンとセットアップ
+### プロジェクトのセットアップ
 
 1. リポジトリをクローン
 
 ```bash
-git clone https://github.com/yourusername/your-repo-name.git
-cd your-repo-name
+git clone https://github.com/yourname/lucentia.git
+cd lucentia
 ```
 
-2. Next.js の依存関係をインストール
+2. 依存関係をインストール
 
 ```bash
 npm install
 ```
 
-※ Tauri の依存関係は Rust の cargo により管理されます。
-
 ## 開発環境での実行
 
-1. Next.js の開発サーバーを起動
-```bash
-npm run dev
-```
+開発環境でアプリを起動するには：
 
-2. 別のターミナルで Tauri アプリを起動
 ```bash
-npm run tauri dev
+npm run dev:tauri
 ```
 
 ## ビルドとパッケージング
 
-プロジェクトをビルドしてリリース版の実行可能ファイルを作成するには、以下を実行してください。
+リリース版の実行可能ファイルを作成するには：
 
 ```bash
 npm run build
-npm run tauri build
+npm run build:tauri
 ```
 
 これにより、各プラットフォーム向けのパッケージが生成されます。
@@ -90,9 +82,9 @@ npm run tauri build
    例: `https://www.youtube.com/watch?v=...`
 
 2. 出力ファイル名を入力するか、空欄にすると動画タイトルが自動的に使用されます。  
-   ダウンロード先はシステムのダウンロードフォルダ（例: `/Users/username/Downloads`）に自動設定されます。
+   ダウンロード先はシステムのダウンロードフォルダに自動設定されます。
 
-3. 「ダウンロード開始」ボタンをクリックすると、ダウンロードが開始され、進捗が画面上の `<progress>` 要素およびパーセンテージ表示でリアルタイムに更新されます。
+3. 「ダウンロード開始」ボタンをクリックすると、ダウンロードが開始され、進捗がリアルタイムに表示されます。
 
 ## コントリビューション
 
