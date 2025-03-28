@@ -219,6 +219,7 @@ fn main() {
     env::set_var("PATH", new_path);
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![download_video, download_metadata])
         .setup(|_app| {
             // yt-dlpバイナリのダウンロードを非同期で実行
