@@ -1,0 +1,93 @@
+name: 'アプリケーションビルド & リリース'
+
+on:
+  push:
+    # mainブランチにプッシュされたとき、またはタグがpushされたときに実行
+    branches:
+      - main
+    tags:
+      - 'v*'
+  # 手動実行も可能に
+  workflow_dispatch:
+
+jobs:
+  create-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-20.04
+    outputs:
+      release_id: ${{ steps.create-release.outputs.result }}
+
+    steps:
+      - name: リリース作成（タグがプッシュされた場合のみ）
+        id: create-release
+        uses: actions/github-script@v6
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          script: |
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: context.ref.replace('refs/tags/', ''),
+              name: context.ref.replace('refs/tags/', ''),
+              draft: true,
+              prerelease: false
+            });
+            return data.id
+
+  build:
+    needs: create-release
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, ubuntu-20.04, windows-latest]
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: ソースコードのチェックアウト
+        uses: actions/checkout@v3
+
+      - name: NodeJSセットアップ
+        uses: actions/setup-node@v3
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      - name: Rustセットアップ
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rustキャッシュ
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      # LinuxビルドのためにWebkitGTKをインストール
+      - name: LinuxビルドツールインストールとWebKitGTKインストール
+        if: matrix.platform == 'ubuntu-20.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+
+      # 依存関係のインストール
+      - name: 依存関係インストール
+        run: npm ci
+
+      # ビルド
+      - name: Tauriビルド
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          # Windowsでマイクロソフト証明書を使用する場合は以下をアンコメント
+          # windowsCodeSigningPfxBase64: ${{ secrets.WINDOWS_PFX_BASE64 }}
+          # windowsCodeSigningPfxPassword: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+          # macOSでApple証明書を使用する場合は以下をアンコメント
+          # macOsCertificateBase64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          # macOsCertificatePassword: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          # macOsSigningIdentity: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          # アップデーター用のキーを設定する場合は以下をアンコメント
+          # tauriPrivateKeyBase64: ${{ secrets.TAURI_PRIVATE_KEY }}
+          # tauriPrivateKeyPassword: ${{ secrets.TAURI_KEY_PASSWORD }} 
