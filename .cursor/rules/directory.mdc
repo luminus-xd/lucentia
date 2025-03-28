@@ -1,0 +1,58 @@
+---
+description: ディレクトリ構造を確認する際に参照する
+globs: 
+alwaysApply: false
+---
+ # プロジェクトのディレクトリ構造マップ
+
+## 概要
+このプロジェクトは、Tauri(Rust)とNext.js(TypeScript)を用いたデスクトップアプリケーションです。
+
+## ディレクトリ構造
+
+### フロントエンド (Next.js)
+
+- `/app` - Next.jsのアプリケーションルート
+  - `page.tsx` - メインページ
+  - `layout.tsx` - アプリケーションのレイアウト
+  - `globals.css` - グローバルスタイル
+
+- `/components` - UIコンポーネント
+  - `/ui` - 再利用可能な基本UIコンポーネント
+    - `button.tsx` - ボタンコンポーネント
+    - `dialog.tsx` - ダイアログコンポーネント
+    - `input.tsx` - 入力フィールドコンポーネント
+    - `label.tsx` - ラベルコンポーネント
+    - `progress.tsx` - プログレスバーコンポーネント
+    - `select.tsx` - セレクトコンポーネント
+    - `switch.tsx` - スイッチコンポーネント
+  - `dialog-setting-path.tsx` - 設定パスダイアログコンポーネント
+
+- `/lib` - ユーティリティと共通関数
+  - `utils.ts` - ユーティリティ関数
+
+- `/public` - 静的アセット
+
+### バックエンド (Tauri/Rust)
+
+- `/src-tauri` - Tauriのアプリケーションルート
+  - `/src` - Rustのソースコード
+  - `/capabilities` - Tauriの機能定義
+  - `/icons` - アプリケーションアイコン
+  - `Cargo.toml` - Rustの依存関係定義
+  - `tauri.conf.json` - Tauriの設定ファイル
+
+### 設定ファイル
+
+- `package.json` - npm依存関係と設定
+- `tsconfig.json` - TypeScript設定
+- `tailwind.config.ts` - Tailwind CSS設定
+- `postcss.config.mjs` - PostCSS設定
+- `next.config.ts` - Next.js設定
+- `biome.json` - Biome設定
+- `eslint.config.mjs` - ESLint設定
+- `components.json` - コンポーネント設定
+
+## コーディング規則
+
+ソースコードの編成と関係については、`base.mdc`に詳しく規定されています。
