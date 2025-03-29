@@ -13,6 +13,7 @@ export default function Home() {
 		bestQuality,
 		downloadSubtitles,
 		preferredFormat,
+		customFilename,
 		metadata,
 		status,
 		downloading,
@@ -23,6 +24,7 @@ export default function Home() {
 		setBestQuality,
 		setDownloadSubtitles,
 		setPreferredFormat,
+		setCustomFilename,
 		handleDownload,
 	} = useVideoDownloader();
 
@@ -47,6 +49,8 @@ export default function Home() {
 						setDownloadSubtitles={setDownloadSubtitles}
 						preferredFormat={preferredFormat}
 						setPreferredFormat={setPreferredFormat}
+						customFilename={customFilename}
+						setCustomFilename={setCustomFilename}
 						metadata={metadata}
 						status={status}
 						downloading={downloading}

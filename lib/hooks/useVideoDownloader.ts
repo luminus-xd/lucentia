@@ -14,6 +14,7 @@ export interface VideoDownloaderState {
 	bestQuality: boolean;
 	downloadSubtitles: boolean;
 	preferredFormat: string;
+	customFilename: string;
 	metadata: VideoMetadata | null;
 	status: string;
 	downloading: boolean;
@@ -27,6 +28,7 @@ export interface VideoDownloaderActions {
 	setBestQuality: (value: boolean) => void;
 	setDownloadSubtitles: (value: boolean) => void;
 	setPreferredFormat: (format: string) => void;
+	setCustomFilename: (filename: string) => void;
 	handleDownload: () => Promise<void>;
 }
 
@@ -63,6 +65,7 @@ export function useVideoDownloader(): VideoDownloaderState &
 	const [bestQuality, setBestQuality] = useState(true);
 	const [downloadSubtitles, setDownloadSubtitles] = useState(false);
 	const [preferredFormat, setPreferredFormat] = useState<string>("mp4");
+	const [customFilename, setCustomFilename] = useState("");
 	const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
 	const [status, setStatus] = useState("");
 	const [downloading, setDownloading] = useState(false);
@@ -172,7 +175,7 @@ export function useVideoDownloader(): VideoDownloaderState &
 		setProgress(0);
 
 		try {
-			// download_video コマンドは、メタデータ取得も内部で行うので、外部からは folderPath と audioOnly を渡すだけでよい
+			// download_video コマンドに customFilename を渡す
 			await invoke<string>("download_video", {
 				url,
 				audioOnly,
@@ -180,6 +183,7 @@ export function useVideoDownloader(): VideoDownloaderState &
 				bestQuality: !audioOnly && bestQuality,
 				downloadSubtitles: !audioOnly && downloadSubtitles,
 				preferredFormat: !audioOnly ? preferredFormat : null,
+				customFilename: customFilename.trim() || null,
 			});
 			setStatus("ダウンロードが完了しました");
 		} catch (error) {
@@ -197,6 +201,7 @@ export function useVideoDownloader(): VideoDownloaderState &
 		bestQuality,
 		downloadSubtitles,
 		preferredFormat,
+		customFilename,
 		metadata,
 		status,
 		downloading,
@@ -207,6 +212,7 @@ export function useVideoDownloader(): VideoDownloaderState &
 		setBestQuality,
 		setDownloadSubtitles,
 		setPreferredFormat,
+		setCustomFilename,
 		handleDownload,
 	};
 }

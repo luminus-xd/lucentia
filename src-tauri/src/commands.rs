@@ -2,6 +2,7 @@ use regex;
 use serde::Serialize;
 use serde_json;
 use std::path::Path;
+use uuid::Uuid;
 use youtube_dl::YoutubeDl;
 
 use crate::downloader::get_yt_dlp_path;
@@ -156,6 +157,7 @@ pub async fn download_video(
   best_quality: bool,
   download_subtitles: bool,
   preferred_format: Option<String>,
+  custom_filename: Option<String>,
 ) -> Result<(), String> {
   println!("Downloading video: {}", url);
 
@@ -177,46 +179,32 @@ pub async fn download_video(
   // yt-dlpバイナリのパスを取得
   let yt_dlp_path = get_yt_dlp_path().await?;
 
-  // メタデータからタイトルを取得
-  let mut meta_instance = YoutubeDl::new(cleaned_url.clone());
-  // カスタムパスのyt-dlpバイナリを使用
-  meta_instance.youtube_dl_path(&yt_dlp_path);
-
-  // 基本的なオプション設定
-  meta_instance
-    .socket_timeout("15")
-    .flat_playlist(true)
-    .extra_arg("--no-check-certificate") // 証明書チェックをスキップ
-    .extra_arg("--force-ipv4"); // IPv4を強制
-
-  let metadata_result = meta_instance.run_async().await;
-
-  let title = match metadata_result {
-    Ok(metadata) => {
-      if let Some(playlist) = metadata.clone().into_playlist() {
-        println!("プレイリストのタイトル: {:?}", playlist.title);
-        playlist.title.unwrap_or_else(|| "No Title".to_string())
-      } else if let Some(video) = metadata.into_single_video() {
-        println!("ビデオのタイトル: {:?}", video.title);
-        video.title.unwrap_or_else(|| "No Title".to_string())
-      } else {
-        return Err("Error getting title".to_string());
-      }
+  // ファイル名の生成 (カスタムかタイトル自動取得)
+  let filename_base = if let Some(filename) = custom_filename {
+    if filename.trim().is_empty() {
+      // 空文字列ならメタデータからタイトルを取得
+      get_video_title(&cleaned_url, &yt_dlp_path.to_string_lossy()).await?
+    } else {
+      // カスタムファイル名を使用
+      sanitize_filename(&filename)
     }
-    Err(e) => {
-      eprintln!("メタデータ取得エラー: {:?}", e);
-      return Err(format!("動画情報の取得に失敗しました: {}", e));
-    }
+  } else {
+    // カスタムファイル名が指定されていない場合はメタデータからタイトルを取得
+    get_video_title(&cleaned_url, &yt_dlp_path.to_string_lossy()).await?
   };
 
-  // タイトルを安全なファイル名に変換
-  let safe_title = sanitize_filename(&title);
-
   // 出力ファイル名生成（audio_only によって拡張子が変わる）
-  let output_filename = format!("{}.{}", safe_title, if audio_only { "mp3" } else { "mp4" });
+  let extension = if audio_only {
+    "mp3".to_string()
+  } else {
+    preferred_format
+      .clone()
+      .unwrap_or_else(|| "mp4".to_string())
+  };
+  let output_filename = format!("{}.{}", filename_base, extension);
 
   // フォルダパスの検証と安全なパスの構築
-  let output_path = if let Some(p) = folder_path {
+  let base_output_path = if let Some(p) = folder_path {
     if p.trim().is_empty() {
       get_default_download_path(&output_filename)?
     } else {
@@ -236,6 +224,35 @@ pub async fn download_video(
     }
   } else {
     get_default_download_path(&output_filename)?
+  };
+
+  // ファイル名が存在する場合はUUIDを追加して重複を回避
+  let output_path = if Path::new(&base_output_path).exists() {
+    let dir = Path::new(&base_output_path)
+      .parent()
+      .ok_or("パスの親ディレクトリを取得できませんでした")?;
+    let stem = Path::new(&output_filename)
+      .file_stem()
+      .ok_or("ファイル名からステム部分を取得できませんでした")?;
+    let ext = Path::new(&output_filename)
+      .extension()
+      .ok_or("ファイル名から拡張子を取得できませんでした")?;
+
+    let uuid_str = Uuid::new_v4().to_string();
+    let uuid = uuid_str.split('-').next().unwrap_or("unique");
+    let new_filename = format!(
+      "{}_{}.{}",
+      stem.to_string_lossy(),
+      uuid,
+      ext.to_string_lossy()
+    );
+
+    let new_path = dir.join(new_filename);
+    println!("ファイル名の重複を回避: {}", new_path.to_string_lossy());
+
+    new_path.to_string_lossy().to_string()
+  } else {
+    base_output_path
   };
 
   println!("Output file: {}", output_path);
@@ -259,16 +276,21 @@ pub async fn download_video(
       .extra_arg("0"); // 最高音質
   } else {
     // ビデオダウンロードの設定
+    let format = match &preferred_format {
+      Some(fmt) => fmt.as_str(),
+      None => "mp4",
+    };
+
     if best_quality {
       instance
         .format("bestvideo+bestaudio/best") // 最高品質のビデオ+音声
         .extra_arg("--merge-output-format")
-        .extra_arg(preferred_format.unwrap_or("mp4".to_string()));
+        .extra_arg(format);
     } else {
       instance
         .format("best") // デフォルトの高品質
         .extra_arg("--merge-output-format")
-        .extra_arg(preferred_format.unwrap_or("mp4".to_string()));
+        .extra_arg(format);
     }
   }
 
@@ -296,5 +318,44 @@ pub async fn download_video(
       Ok(())
     }
     Err(e) => Err(format!("Error downloading video: {}", e)),
+  }
+}
+
+// タイトルを取得する補助関数
+async fn get_video_title(url: &str, yt_dlp_path: &str) -> Result<String, String> {
+  // メタデータからタイトルを取得
+  let mut meta_instance = YoutubeDl::new(url.to_string());
+  // カスタムパスのyt-dlpバイナリを使用
+  meta_instance.youtube_dl_path(yt_dlp_path);
+
+  // 基本的なオプション設定
+  meta_instance
+    .socket_timeout("15")
+    .flat_playlist(true)
+    .extra_arg("--no-check-certificate") // 証明書チェックをスキップ
+    .extra_arg("--force-ipv4"); // IPv4を強制
+
+  let metadata_result = meta_instance.run_async().await;
+
+  match metadata_result {
+    Ok(metadata) => {
+      if let Some(playlist) = metadata.clone().into_playlist() {
+        println!("プレイリストのタイトル: {:?}", playlist.title);
+        Ok(sanitize_filename(
+          &playlist.title.unwrap_or_else(|| "No Title".to_string()),
+        ))
+      } else if let Some(video) = metadata.into_single_video() {
+        println!("ビデオのタイトル: {:?}", video.title);
+        Ok(sanitize_filename(
+          &video.title.unwrap_or_else(|| "No Title".to_string()),
+        ))
+      } else {
+        Err("Error getting title".to_string())
+      }
+    }
+    Err(e) => {
+      eprintln!("メタデータ取得エラー: {:?}", e);
+      Err(format!("動画情報の取得に失敗しました: {}", e))
+    }
   }
 }

@@ -32,3 +32,4 @@ youtube_dl = { version = "0.10.0", features = [
 tokio = { version = "1.32.0", features = ["full"] }
 directories = "5.0.1"
 regex = "1.9.5"
+uuid = { version = "1.4.1", features = ["v4"] }

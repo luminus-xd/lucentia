@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use youtube_dl::{downloader::download_yt_dlp, YoutubeDl};
+use youtube_dl::downloader::download_yt_dlp;
 
 /// yt-dlpバイナリのパスを取得する関数
 /// アプリケーションのデータディレクトリにyt-dlpバイナリが存在するかチェックし、
