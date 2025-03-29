@@ -227,7 +227,7 @@ pub async fn download_video(
   };
 
   // ファイル名が存在する場合はUUIDを追加して重複を回避
-  let output_path = if Path::new(&base_output_path).exists() {
+  let mut output_path = if Path::new(&base_output_path).exists() {
     let dir = Path::new(&base_output_path)
       .parent()
       .ok_or("パスの親ディレクトリを取得できませんでした")?;
