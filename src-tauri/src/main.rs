@@ -12,11 +12,24 @@ use crate::commands::{download_metadata, download_video};
 use crate::downloader::get_yt_dlp_path;
 
 fn main() {
-  // 従来のPATH設定も残しておく（ダウンロードに失敗した場合のフォールバック用）
-  let brew_paths = "/usr/local/bin:/opt/homebrew/bin";
-  let current_path = env::var("PATH").unwrap_or_default();
-  let new_path = format!("{}:{}", brew_paths, current_path);
-  env::set_var("PATH", new_path);
+  // 環境に応じたPATH設定
+  #[cfg(not(windows))]
+  {
+    // macOS/Linux環境のPATH設定
+    let brew_paths = "/usr/local/bin:/opt/homebrew/bin";
+    let current_path = env::var("PATH").unwrap_or_default();
+    let new_path = format!("{}:{}", brew_paths, current_path);
+    env::set_var("PATH", new_path);
+  }
+
+  #[cfg(windows)]
+  {
+    // Windows環境のPATH設定 - セミコロン区切り
+    if let Ok(current_path) = env::var("PATH") {
+      println!("現在のPATH: {}", current_path);
+    }
+    // Windowsでは特に設定しない - システムのFFmpegを使用するか、yt-dlpの自動検出に任せる
+  }
 
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())

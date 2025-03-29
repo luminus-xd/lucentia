@@ -283,19 +283,22 @@ pub async fn download_video(
 
     if best_quality {
       instance
-        .format("bestvideo[vcodec^=avc]+bestaudio/best[vcodec^=avc]/best") // H.264コーデックを優先
+        .format("bestvideo+bestaudio/best") // 最高品質のビデオ+音声
         .extra_arg("--merge-output-format")
-        .extra_arg(format)
-        .extra_arg("--audio-format")
-        .extra_arg("aac"); // Windows互換のオーディオコーデック
+        .extra_arg(format);
     } else {
       instance
-        .format("best[vcodec^=avc]/best") // H.264コーデックを優先
+        .format("best") // デフォルトの高品質
         .extra_arg("--merge-output-format")
-        .extra_arg(format)
-        .extra_arg("--audio-format")
-        .extra_arg("aac"); // Windows互換のオーディオコーデック
+        .extra_arg(format);
     }
+
+    // Windows環境での音声と動画の結合問題に対応
+    #[cfg(windows)]
+    instance
+      .extra_arg("--prefer-ffmpeg") // FFmpegを優先使用
+      .extra_arg("--postprocessor-args")
+      .extra_arg("ffmpeg:-hide_banner -nostats"); // 詳細出力を抑制
   }
 
   // 字幕のダウンロード設定
