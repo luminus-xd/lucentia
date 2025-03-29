@@ -265,7 +265,8 @@ pub async fn download_video(
   instance
     .socket_timeout("15")
     .extra_arg("--no-check-certificate") // 証明書チェックをスキップ
-    .extra_arg("--force-ipv4"); // IPv4を強制
+    .extra_arg("--verbose") // 詳細なログを出力
+    .extra_arg("--dump-json"); // JSON形式で詳細出力（デバッグ用）
 
   if audio_only {
     instance
@@ -275,35 +276,34 @@ pub async fn download_video(
       .extra_arg("--audio-quality")
       .extra_arg("0"); // 最高音質
   } else {
-    // ビデオダウンロードの設定
+    // フォーマット設定（シンプルに保つ）
     let format = match &preferred_format {
       Some(fmt) => fmt.as_str(),
       None => "mp4",
     };
 
-    if best_quality {
-      instance
-        .format("bestvideo+bestaudio/best") // 最高品質のビデオ+音声
-        .extra_arg("--merge-output-format")
-        .extra_arg(format);
-    } else {
-      instance
-        .format("best") // デフォルトの高品質
-        .extra_arg("--merge-output-format")
-        .extra_arg(format);
+    // 基本設定（環境に関わらず共通）
+    instance.format("best"); // 最も互換性の高い単一ストリームを選択
+
+    // 環境に応じた追加設定
+    #[cfg(not(windows))]
+    {
+      if best_quality {
+        instance
+          .format("bestvideo+bestaudio/best") // 最高品質のビデオ+音声
+          .extra_arg("--merge-output-format")
+          .extra_arg(format);
+      } else {
+        instance
+          .extra_arg("--merge-output-format")
+          .extra_arg(format);
+      }
     }
 
-    // Windows環境での音声と動画の結合問題に対応
+    // Windows環境（シンプルな設定）
     #[cfg(windows)]
     {
-      instance
-        .extra_arg("--prefer-ffmpeg") // FFmpegを優先使用
-        .extra_arg("--fixup")
-        .extra_arg("merge") // 動画と音声を強制的に結合
-        .extra_arg("--keep-video") // 元の動画ファイルを保持しない
-        .extra_arg("--no-keep-fragments") // フラグメントを保持しない
-        .extra_arg("--postprocessor-args")
-        .extra_arg("ffmpeg:-c:v copy -c:a aac -strict experimental"); // Windows互換のエンコード設定
+      // 追加設定なし
     }
   }
 
@@ -323,14 +323,39 @@ pub async fn download_video(
   instance.extra_arg("-o").extra_arg(&output_path);
 
   println!("Starting download...");
+
+  // yt-dlpコマンドのデバッグ出力
+  let debug_cmd = format!(
+    "{} --verbose \"{}\" -o \"{}\"",
+    yt_dlp_path.to_string_lossy(),
+    &url,
+    output_path
+  );
+  println!("実行コマンド（参考）: {}", debug_cmd);
+
   let result = instance.socket_timeout("15").download_to_async("").await;
 
   match result {
     Ok(_) => {
       println!("Downloaded video successfully.");
+
+      // ダウンロード後のファイル確認
+      if Path::new(&output_path).exists() {
+        let metadata = match std::fs::metadata(&output_path) {
+          Ok(meta) => format!("{} bytes", meta.len()),
+          Err(_) => "不明".to_string(),
+        };
+        println!("出力ファイル: {} (サイズ: {})", output_path, metadata);
+      } else {
+        println!("警告: 出力ファイルが存在しません: {}", output_path);
+      }
+
       Ok(())
     }
-    Err(e) => Err(format!("Error downloading video: {}", e)),
+    Err(e) => {
+      eprintln!("ダウンロードエラー: {}", e);
+      Err(format!("Error downloading video: {}", e))
+    }
   }
 }
 

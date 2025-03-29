@@ -24,25 +24,9 @@ fn main() {
 
   #[cfg(windows)]
   {
-    // Windows環境のPATH設定 - セミコロン区切り
+    // Windows環境のPATH設定 - コンソールログを表示するのみ
     if let Ok(current_path) = env::var("PATH") {
       println!("現在のPATH: {}", current_path);
-
-      // システムにインストールされているFFmpegを確実に使えるようにするため、
-      // 環境変数FFMPEG_LOCATIONを設定（yt-dlpが利用）
-      match std::process::Command::new("where").arg("ffmpeg").output() {
-        Ok(output) => {
-          if output.status.success() {
-            let ffmpeg_path = String::from_utf8_lossy(&output.stdout);
-            let ffmpeg_path = ffmpeg_path.lines().next().unwrap_or("").trim();
-            if !ffmpeg_path.is_empty() {
-              println!("FFmpegパスを設定: {}", ffmpeg_path);
-              env::set_var("FFMPEG_LOCATION", ffmpeg_path);
-            }
-          }
-        }
-        Err(e) => println!("FFmpeg検索エラー: {}", e),
-      }
     }
   }
 
