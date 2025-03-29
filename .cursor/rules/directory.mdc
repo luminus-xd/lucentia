@@ -6,7 +6,7 @@ alwaysApply: false
 # プロジェクトのディレクトリ構造マップ
 
 ## 概要
-このプロジェクトは、Tauri(Rust)とNext.js(TypeScript)を用いたデスクトップアプリケーションです。
+このプロジェクトは、Tauri(Rust)とNext.js(TypeScript)を用いたビデオダウンローダーアプリケーションです。
 
 ## ディレクトリ構造
 
@@ -16,20 +16,32 @@ alwaysApply: false
   - `page.tsx` - メインページ
   - `layout.tsx` - アプリケーションのレイアウト
   - `globals.css` - グローバルスタイル
+  - `favicon.ico` - ファビコン
 
 - `/components` - UIコンポーネント
   - `/ui` - 再利用可能な基本UIコンポーネント
+    - `badge.tsx` - バッジコンポーネント
     - `button.tsx` - ボタンコンポーネント
+    - `card.tsx` - カードコンポーネント
     - `dialog.tsx` - ダイアログコンポーネント
     - `input.tsx` - 入力フィールドコンポーネント
     - `label.tsx` - ラベルコンポーネント
     - `progress.tsx` - プログレスバーコンポーネント
     - `select.tsx` - セレクトコンポーネント
     - `switch.tsx` - スイッチコンポーネント
-  - `dialog-setting-path.tsx` - 設定パスダイアログコンポーネント
+  - `AppFooter.tsx` - フッターコンポーネント
+  - `AppHeader.tsx` - ヘッダーコンポーネント
+  - `DialogSettingPath.tsx` - 設定パスダイアログコンポーネント
+  - `VideoForm.tsx` - ビデオフォームコンポーネント
 
 - `/lib` - ユーティリティと共通関数
+  - `/hooks` - カスタムReactフック
+    - `useVideoDownloader.ts` - ビデオダウンロード機能のフック
+  - `/config` - 設定ファイル
   - `utils.ts` - ユーティリティ関数
+
+- `/types` - TypeScript型定義
+  - `tauri.d.ts` - Tauri関連の型定義
 
 - `/public` - 静的アセット
 
@@ -37,12 +49,17 @@ alwaysApply: false
 
 - `/src-tauri` - Tauriのアプリケーションルート
   - `/src` - Rustのソースコード
+    - `main.rs` - アプリケーションのエントリーポイント
+    - `lib.rs` - ライブラリモジュール定義
+    - `commands.rs` - フロントエンドから呼び出せるコマンド
+    - `downloader.rs` - ダウンロード機能の実装
+    - `utils.rs` - ユーティリティ関数
   - `/capabilities` - Tauriの機能定義
   - `/icons` - アプリケーションアイコン
   - `Cargo.toml` - Rustの依存関係定義
   - `tauri.conf.json` - Tauriの設定ファイル
 
-### 設定ファイル
+### ビルド・設定ファイル
 
 - `package.json` - npm依存関係と設定
 - `tsconfig.json` - TypeScript設定
@@ -55,4 +72,4 @@ alwaysApply: false
 
 ## コーディング規則
 
-ソースコードの編成と関係については、`base.mdc`に詳しく規定されています。 
+ソースコードの編成と関係については、`base.mdc`に詳しく規定されています
