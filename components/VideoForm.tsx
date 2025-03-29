@@ -1,4 +1,12 @@
-import { Download, LoaderCircle, Music, Video, Clock } from "lucide-react";
+import {
+	Download,
+	LoaderCircle,
+	Music,
+	Video,
+	Clock,
+	File,
+	X,
+} from "lucide-react";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
@@ -28,6 +36,8 @@ interface VideoFormProps {
 	setDownloadSubtitles: (value: boolean) => void;
 	preferredFormat: string;
 	setPreferredFormat: (format: string) => void;
+	customFilename: string;
+	setCustomFilename: (filename: string) => void;
 	metadata: VideoMetadata | null;
 	status: string;
 	downloading: boolean;
@@ -46,6 +56,8 @@ export function VideoForm({
 	setDownloadSubtitles,
 	preferredFormat,
 	setPreferredFormat,
+	customFilename,
+	setCustomFilename,
 	metadata,
 	status,
 	downloading,
@@ -66,11 +78,53 @@ export function VideoForm({
 						onChange={(e) => setUrl(e.target.value)}
 						placeholder="https://www.youtube.com/watch?v=..."
 						disabled={downloading}
-						className="input-dark pl-10"
+						className="input-dark pl-10 pr-10"
 					/>
 					<div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
 						<Video className="h-4 w-4" />
 					</div>
+					{url && (
+						<button
+							type="button"
+							onClick={() => setUrl("")}
+							className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+							disabled={downloading}
+							aria-label="URLをクリア"
+						>
+							<X className="h-4 w-4" />
+						</button>
+					)}
+				</div>
+			</div>
+
+			<div className="space-y-2">
+				<Label htmlFor="filename" className="text-sm font-medium">
+					ファイル名（省略可）
+				</Label>
+				<div className="relative">
+					<Input
+						id="filename"
+						type="text"
+						value={customFilename}
+						onChange={(e) => setCustomFilename(e.target.value)}
+						placeholder="省略すると動画タイトルが使用されます"
+						disabled={downloading}
+						className="input-dark pl-10 pr-10"
+					/>
+					<div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+						<File className="h-4 w-4" />
+					</div>
+					{customFilename && (
+						<button
+							type="button"
+							onClick={() => setCustomFilename("")}
+							className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+							disabled={downloading}
+							aria-label="ファイル名をクリア"
+						>
+							<X className="h-4 w-4" />
+						</button>
+					)}
 				</div>
 			</div>
 
