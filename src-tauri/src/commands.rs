@@ -295,10 +295,16 @@ pub async fn download_video(
 
     // Windows環境での音声と動画の結合問題に対応
     #[cfg(windows)]
-    instance
-      .extra_arg("--prefer-ffmpeg") // FFmpegを優先使用
-      .extra_arg("--postprocessor-args")
-      .extra_arg("ffmpeg:-hide_banner -nostats"); // 詳細出力を抑制
+    {
+      instance
+        .extra_arg("--prefer-ffmpeg") // FFmpegを優先使用
+        .extra_arg("--fixup")
+        .extra_arg("merge") // 動画と音声を強制的に結合
+        .extra_arg("--keep-video") // 元の動画ファイルを保持しない
+        .extra_arg("--no-keep-fragments") // フラグメントを保持しない
+        .extra_arg("--postprocessor-args")
+        .extra_arg("ffmpeg:-c:v copy -c:a aac -strict experimental"); // Windows互換のエンコード設定
+    }
   }
 
   // 字幕のダウンロード設定
