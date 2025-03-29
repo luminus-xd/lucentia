@@ -8,7 +8,10 @@
   動画サイトのURLを指定して動画をダウンロード可能です。
 
 - **音楽データダウンロード**
-  音声データ（.mp3）のみを切り離してダウンロード可能です。
+  音声データ（.mp3）のみをffmpegを使用して抽出し、ダウンロード可能です。
+
+- **動画形式変換**
+  ffmpegを使用して様々な形式に変換可能です。
 
 - **自動出力ファイル名**
   出力ファイル名を省略した場合、動画のタイトルを取得してファイル名として使用します。
@@ -27,7 +30,24 @@
 - **yt-dlp**  
   動画のダウンロードとフォーマット変換に使用。
 
+- **ffmpeg**  
+  音声抽出や動画形式変換の処理に使用。
+
 ## 📝 使用方法
+
+### インストール方法
+
+一般ユーザー向けのインストール手順です：
+
+1. [リリースページ](https://github.com/yourusername/lucentia/releases)から最新バージョンをダウンロード
+   - Windows: `.exe`または`.msi`ファイル
+   - macOS: `.dmg`ファイル
+
+2. ダウンロードしたファイルを実行してインストール
+   - Windows: インストーラーの指示に従う
+   - macOS: アプリケーションをApplicationsフォルダにドラッグ
+
+### 使い方
 
 1. アプリ起動後、動画の URL を入力します。  
    例: `https://www.youtube.com/watch?v=...`
@@ -43,10 +63,23 @@
 
 - [Node.js](https://nodejs.org/)
 - [Rust](https://www.rust-lang.org/tools/install)
+- [ffmpeg](https://ffmpeg.org/download.html)
+  音声抽出や動画形式変換に必要です。以下の方法でインストールできます：
+  
+  **Windows**: 
+  - [公式サイト](https://ffmpeg.org/download.html)からダウンロードするか、
+  - `winget install FFmpeg`（Windows Package Manager）
+  - または`choco install ffmpeg`（Chocolatey）
 
-### インストール
+  **macOS**:
+  - `brew install ffmpeg`（Homebrew）
+
+### 開発環境の準備
+
+以下の手順は開発者向けです。アプリケーションの利用者は[リリースページ](https://github.com/yourusername/lucentia/releases)から直接ダウンロードしてください。
 
 ```bash
+# プロジェクトの依存関係をインストール
 npm install
 ```
 
