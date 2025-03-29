@@ -39,7 +39,7 @@ fn main() {
     let temp_dirs = vec![
       dirs::home_dir().map(|p| p.join("Downloads")),
       dirs::data_dir().map(|p| p.join("my-video-downloader").join("temp")),
-      std::env::temp_dir().join("my-video-downloader"),
+      Some(std::env::temp_dir().join("my-video-downloader")),
     ];
 
     for dir in temp_dirs.iter().flatten() {

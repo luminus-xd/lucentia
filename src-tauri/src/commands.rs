@@ -227,7 +227,7 @@ pub async fn download_video(
   };
 
   // ファイル名が存在する場合はUUIDを追加して重複を回避
-  let output_path = if Path::new(&base_output_path).exists() {
+  let mut output_path = if Path::new(&base_output_path).exists() {
     let dir = Path::new(&base_output_path)
       .parent()
       .ok_or("パスの親ディレクトリを取得できませんでした")?;
@@ -330,7 +330,7 @@ pub async fn download_video(
     }
   } else {
     // フォーマット設定（シンプルに保つ）
-    let format = match &preferred_format {
+    let _format = match &preferred_format {
       Some(fmt) => fmt.as_str(),
       None => "mp4",
     };
@@ -345,12 +345,12 @@ pub async fn download_video(
         instance
           .format("bestvideo+bestaudio/best") // 最高品質のビデオ+音声
           .extra_arg("--merge-output-format")
-          .extra_arg(format);
+          .extra_arg(_format);
       } else {
         instance
           .format("best") // デフォルトの高品質
           .extra_arg("--merge-output-format")
-          .extra_arg(format);
+          .extra_arg(_format);
       }
     }
 
@@ -419,7 +419,7 @@ pub async fn download_video(
         } else {
           "--merge-output-format"
         },
-        if !audio_only { format } else { "" },
+        if !audio_only { "mp4" } else { "" },
       ])
       .output();
 
