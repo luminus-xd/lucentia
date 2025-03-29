@@ -265,8 +265,50 @@ pub async fn download_video(
   instance
     .socket_timeout("15")
     .extra_arg("--no-check-certificate") // 証明書チェックをスキップ
-    .extra_arg("--verbose") // 詳細なログを出力
-    .extra_arg("--dump-json"); // JSON形式で詳細出力（デバッグ用）
+    .extra_arg("--verbose"); // 詳細なログを出力
+
+  // Windows環境では単純なパス処理
+  #[cfg(windows)]
+  {
+    // パスに問題があれば、シンプルな名前に変更
+    let simple_path = if output_path.contains(" ") {
+      // ファイル名を単純化
+      let dir = Path::new(&output_path).parent().unwrap_or(Path::new(""));
+      let ext = Path::new(&output_path)
+        .extension()
+        .unwrap_or_else(|| std::ffi::OsStr::new("mp4"));
+
+      // タイトルの先頭部分を抽出（スペースなし）
+      let filename_base = Path::new(&output_path)
+        .file_stem()
+        .unwrap_or_else(|| std::ffi::OsStr::new("video"))
+        .to_string_lossy()
+        .to_string();
+
+      // スペースを削除し、最初の20文字だけを使用
+      let clean_name = filename_base
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .take(20)
+        .collect::<String>();
+
+      let new_path = dir.join(format!("{}.{}", clean_name, ext.to_string_lossy()));
+      println!(
+        "パス名を単純化: {} -> {}",
+        output_path,
+        new_path.to_string_lossy()
+      );
+      new_path.to_string_lossy().to_string()
+    } else {
+      output_path.clone()
+    };
+
+    // 出力パスを更新
+    output_path = simple_path;
+
+    // Windows環境でのファイル名処理を追加
+    instance.extra_arg("--windows-filenames");
+  }
 
   if audio_only {
     instance
@@ -275,6 +317,17 @@ pub async fn download_video(
       .extra_arg("mp3")
       .extra_arg("--audio-quality")
       .extra_arg("0"); // 最高音質
+
+    // Windows環境（シンプルな設定）
+    #[cfg(windows)]
+    {
+      // Windows環境では特定のオプションを設定
+      instance
+        .format("best") // 単一フォーマットを選択
+        .extra_arg("--no-mtime") // ファイル更新日時を設定しない
+        .extra_arg("--no-part") // 部分的なファイルを作成しない
+        .extra_arg("--windows-filenames"); // Windowsファイル名の制限に対応
+    }
   } else {
     // フォーマット設定（シンプルに保つ）
     let format = match &preferred_format {
@@ -295,15 +348,16 @@ pub async fn download_video(
           .extra_arg(format);
       } else {
         instance
+          .format("best") // デフォルトの高品質
           .extra_arg("--merge-output-format")
           .extra_arg(format);
       }
     }
 
-    // Windows環境（シンプルな設定）
+    // Windows環境向けのシンプルな設定
     #[cfg(windows)]
     {
-      // 追加設定なし
+      instance.extra_arg("--prefer-ffmpeg");
     }
   }
 
@@ -333,24 +387,118 @@ pub async fn download_video(
   );
   println!("実行コマンド（参考）: {}", debug_cmd);
 
+  // Windows環境では直接実行を試みる
+  #[cfg(windows)]
+  {
+    // 標準のyt-dlpコマンドを直接実行
+    println!("Windows環境では直接コマンド実行を優先します...");
+    let output = std::process::Command::new(&yt_dlp_path)
+      .args(&[
+        "--verbose",
+        &url,
+        "-o",
+        &output_path,
+        "--no-check-certificate",
+        "--windows-filenames",
+        if audio_only {
+          "--extract-audio"
+        } else if best_quality {
+          "--format"
+        } else {
+          "--format"
+        },
+        if audio_only {
+          "--audio-format"
+        } else if best_quality {
+          "bestvideo+bestaudio/best"
+        } else {
+          "best"
+        },
+        if audio_only {
+          "mp3"
+        } else {
+          "--merge-output-format"
+        },
+        if !audio_only { format } else { "" },
+      ])
+      .output();
+
+    match output {
+      Ok(output) => {
+        if output.status.success() {
+          println!("コマンド実行が成功しました");
+
+          // ファイルの確認
+          if Path::new(&output_path).exists() {
+            println!("ファイルが正常に作成されました: {}", output_path);
+            let metadata = std::fs::metadata(&output_path)
+              .map_or_else(|_| "不明".to_string(), |m| format!("{} bytes", m.len()));
+            println!("ファイルサイズ: {}", metadata);
+            return Ok(());
+          } else {
+            println!("警告: コマンドは成功しましたが、ファイルが存在しません");
+          }
+        } else {
+          eprintln!(
+            "コマンド実行エラー: {}",
+            String::from_utf8_lossy(&output.stderr)
+          );
+        }
+      }
+      Err(e) => {
+        eprintln!("コマンド実行の開始に失敗: {}", e);
+      }
+    }
+
+    // 直接実行が失敗した場合はライブラリによる実行を試みる
+    println!("直接実行が失敗したため、ライブラリによる実行を試みます...");
+  }
+
   let result = instance.socket_timeout("15").download_to_async("").await;
 
   match result {
     Ok(_) => {
       println!("Downloaded video successfully.");
 
-      // ダウンロード後のファイル確認
+      // ファイルが存在するか確認
       if Path::new(&output_path).exists() {
         let metadata = match std::fs::metadata(&output_path) {
           Ok(meta) => format!("{} bytes", meta.len()),
           Err(_) => "不明".to_string(),
         };
         println!("出力ファイル: {} (サイズ: {})", output_path, metadata);
+        Ok(())
       } else {
-        println!("警告: 出力ファイルが存在しません: {}", output_path);
-      }
+        // Windows環境では最後の手段として直接yt-dlpコマンドを実行
+        #[cfg(windows)]
+        {
+          println!("警告: 出力ファイルが存在しません: {}", output_path);
+          println!("最終手段: 基本的なyt-dlpコマンドを実行します...");
 
-      Ok(())
+          let status = std::process::Command::new(&yt_dlp_path)
+            .args(&[&url, "-o", &output_path])
+            .status();
+
+          match status {
+            Ok(exit) if exit.success() => {
+              println!("基本コマンドが成功しました");
+              if Path::new(&output_path).exists() {
+                println!("ファイルが作成されました！");
+                return Ok(());
+              }
+            }
+            _ => {}
+          }
+
+          Err("ダウンロードは成功しましたが、ファイルが見つかりません".to_string())
+        }
+
+        #[cfg(not(windows))]
+        {
+          println!("警告: 出力ファイルが存在しません: {}", output_path);
+          Err("ファイルのダウンロードに失敗しました".to_string())
+        }
+      }
     }
     Err(e) => {
       eprintln!("ダウンロードエラー: {}", e);

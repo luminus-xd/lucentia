@@ -24,9 +24,39 @@ fn main() {
 
   #[cfg(windows)]
   {
-    // Windows環境のPATH設定 - コンソールログを表示するのみ
+    // Windows環境のPATH設定
     if let Ok(current_path) = env::var("PATH") {
       println!("現在のPATH: {}", current_path);
+    }
+
+    // Windows環境でのyt-dlp動作改善のための環境変数
+    env::set_var("NO_COLOR", "1"); // カラー出力を無効化（Windows端末での問題回避）
+                                   // プロキシ設定を無効化
+    env::set_var("HTTP_PROXY", "");
+    env::set_var("HTTPS_PROXY", "");
+
+    // 一時ディレクトリの作成（複数の場所を試す）
+    let temp_dirs = vec![
+      dirs::home_dir().map(|p| p.join("Downloads")),
+      dirs::data_dir().map(|p| p.join("my-video-downloader").join("temp")),
+      std::env::temp_dir().join("my-video-downloader"),
+    ];
+
+    for dir in temp_dirs.iter().flatten() {
+      if !dir.exists() {
+        if let Err(e) = std::fs::create_dir_all(dir) {
+          println!("一時ディレクトリの作成に失敗: {:?} - {}", dir, e);
+        } else {
+          println!("一時ディレクトリを作成: {:?}", dir);
+          // 作成できたディレクトリを一時ディレクトリとして設定
+          env::set_var("TEMP", dir.to_string_lossy().to_string());
+          break;
+        }
+      } else {
+        println!("既存の一時ディレクトリを使用: {:?}", dir);
+        env::set_var("TEMP", dir.to_string_lossy().to_string());
+        break;
+      }
     }
   }
 
