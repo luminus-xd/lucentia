@@ -16,22 +16,15 @@ import {
 import { useDownloadedFiles } from "@/lib/hooks/useDownloadedFiles";
 import { useClickOutside } from "@/lib/hooks/useClickOutside";
 import { formatBytes } from "@/lib/hooks/useHistory";
+import { useTranslation } from "@/lib/i18n";
 
 type TabKey = "all" | "video" | "audio";
 type SortKey = "date" | "name" | "size";
 type SortDir = "asc" | "desc";
 
-const TABS: { key: TabKey; label: string }[] = [
-	{ key: "all", label: "All Files" },
-	{ key: "video", label: "Videos" },
-	{ key: "audio", label: "Audio" },
-];
+const TAB_KEYS: TabKey[] = ["all", "video", "audio"];
 
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-	{ key: "date", label: "Date" },
-	{ key: "name", label: "Name" },
-	{ key: "size", label: "Size" },
-];
+const SORT_KEYS: SortKey[] = ["date", "name", "size"];
 
 /** Set の要素をトグルする（あれば削除、なければ追加） */
 function toggleSetItem<T>(set: Set<T>, item: T): Set<T> {
@@ -45,8 +38,20 @@ function toggleSetItem<T>(set: Set<T>, item: T): Set<T> {
 }
 
 export default function DownloadsPage() {
+	const { t } = useTranslation();
 	const { files, loading, deleteFiles, openFile, openInFolder } =
 		useDownloadedFiles();
+	const tabLabels: Record<TabKey, string> = {
+		all: t("downloads.allFiles"),
+		video: t("downloads.videos"),
+		audio: t("downloads.audio"),
+	};
+	const sortLabels: Record<SortKey, string> = {
+		date: t("downloads.date"),
+		name: t("downloads.name"),
+		size: t("downloads.size"),
+	};
+
 	const [activeTab, setActiveTab] = useState<TabKey>("all");
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 	const [searchQuery, setSearchQuery] = useState("");
@@ -140,7 +145,7 @@ export default function DownloadsPage() {
 		return (
 			<div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
 				<Loader2 className="h-6 w-6 animate-spin" />
-				<p className="text-sm">Loading files...</p>
+				<p className="text-sm">{t("downloads.loading")}</p>
 			</div>
 		);
 	}
@@ -150,43 +155,45 @@ export default function DownloadsPage() {
 			{/* Header Row */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-2xl font-semibold">Downloads</h1>
+					<h1 className="text-2xl font-semibold">{t("downloads.title")}</h1>
 					<p className="text-[13px] text-muted-foreground">
-						Manage your downloaded files
+						{t("downloads.description")}
 					</p>
 				</div>
 
 				{/* Sort Dropdown */}
 				<div className="relative" ref={sortRef}>
 					<button
+						type="button"
 						onClick={() => setSortOpen((v) => !v)}
 						className="flex items-center gap-2 bg-secondary rounded-lg py-2.5 px-4 text-sm font-medium hover:bg-secondary/80 transition-colors"
 					>
 						<ArrowUpDown className="h-4 w-4" />
-						{SORT_OPTIONS.find((o) => o.key === sortKey)?.label}
+						{sortLabels[sortKey]}
 					</button>
 					{sortOpen && (
 						<div className="absolute right-0 top-full mt-1 w-48 bg-secondary border border-border rounded-lg p-1 shadow-lg z-50">
-							{SORT_OPTIONS.map((opt) => (
+							{SORT_KEYS.map((key) => (
 								<button
-									key={opt.key}
+									type="button"
+									key={key}
 									onClick={() => {
-										if (sortKey === opt.key) {
+										if (sortKey === key) {
 											setSortDir((d) => (d === "asc" ? "desc" : "asc"));
 										} else {
-											setSortKey(opt.key);
-											setSortDir(opt.key === "name" ? "asc" : "desc");
+											setSortKey(key);
+											setSortDir(key === "name" ? "asc" : "desc");
 										}
 										setSortOpen(false);
 									}}
 									className={`flex items-center justify-between w-full rounded-md px-3 py-2 text-sm transition-colors ${
-										sortKey === opt.key
+										sortKey === key
 											? "bg-background text-cyan"
 											: "text-foreground hover:bg-background/50"
 									}`}
 								>
-									{opt.label}
-									{sortKey === opt.key && (
+									{sortLabels[key]}
+									{sortKey === key && (
 										<span className="text-[10px] font-mono text-muted-foreground">
 											{sortDir === "asc" ? "ASC" : "DESC"}
 										</span>
@@ -206,7 +213,7 @@ export default function DownloadsPage() {
 						type="text"
 						value={searchQuery}
 						onChange={(e) => setSearchQuery(e.target.value)}
-						placeholder="Search files..."
+						placeholder={t("downloads.searchPlaceholder")}
 						className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground/50 focus:outline-none"
 					/>
 				</div>
@@ -214,6 +221,7 @@ export default function DownloadsPage() {
 				{/* Filter Dropdown */}
 				<div className="relative" ref={filterRef}>
 					<button
+						type="button"
 						onClick={() => setFilterOpen((v) => !v)}
 						className={`flex items-center gap-2 bg-secondary rounded-lg py-3 px-4 text-sm transition-colors ${
 							filterFormats.size > 0
@@ -222,7 +230,7 @@ export default function DownloadsPage() {
 						}`}
 					>
 						<SlidersHorizontal className="h-4 w-4" />
-						Filter
+						{t("downloads.filter")}
 						{filterFormats.size > 0 && (
 							<span className="bg-cyan text-cyan-foreground text-[10px] font-bold font-mono rounded px-1.5 py-0.5 leading-none">
 								{filterFormats.size}
@@ -233,12 +241,13 @@ export default function DownloadsPage() {
 						<div className="absolute right-0 top-full mt-1 w-48 bg-secondary border border-border rounded-lg p-1 shadow-lg z-50">
 							{availableFormats.length === 0 ? (
 								<p className="px-3 py-2 text-xs text-muted-foreground">
-									No formats available
+									{t("downloads.noFormats")}
 								</p>
 							) : (
 								<>
 									{availableFormats.map((fmt) => (
 										<button
+											type="button"
 											key={fmt}
 											onClick={() =>
 												setFilterFormats((prev) => toggleSetItem(prev, fmt))
@@ -263,10 +272,11 @@ export default function DownloadsPage() {
 										<>
 											<div className="h-px bg-background my-1" />
 											<button
+												type="button"
 												onClick={() => setFilterFormats(new Set())}
 												className="w-full rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-background/50 transition-colors"
 											>
-												Clear all
+												{t("downloads.clearAll")}
 											</button>
 										</>
 									)}
@@ -279,20 +289,21 @@ export default function DownloadsPage() {
 
 			{/* Folder Tabs */}
 			<div className="flex bg-secondary rounded-lg p-1 gap-1">
-				{TABS.map((tab) => {
-					const isActive = activeTab === tab.key;
-					const count = tabCount(tab.key);
+				{TAB_KEYS.map((key) => {
+					const isActive = activeTab === key;
+					const count = tabCount(key);
 					return (
 						<button
-							key={tab.key}
-							onClick={() => setActiveTab(tab.key)}
+							type="button"
+							key={key}
+							onClick={() => setActiveTab(key)}
 							className={`flex items-center gap-2 rounded-md px-4 py-2 text-xs font-mono transition-colors ${
 								isActive
 									? "bg-background text-cyan"
 									: "text-muted-foreground hover:text-foreground/80"
 							}`}
 						>
-							{tab.label}
+							{tabLabels[key]}
 							{isActive && (
 								<span className="bg-cyan text-cyan-foreground text-[10px] font-bold font-mono rounded px-1.5 py-0.5 leading-none">
 									{count}
@@ -315,11 +326,11 @@ export default function DownloadsPage() {
 							className="w-4 h-4 rounded border-slate-600 bg-transparent accent-cyan cursor-pointer"
 						/>
 					</div>
-					<div className="flex-1">File</div>
-					<div className="w-[100px]">Format</div>
-					<div className="w-[80px]">Size</div>
-					<div className="w-[100px]">Date</div>
-					<div className="w-[80px]">Actions</div>
+					<div className="flex-1">{t("downloads.file")}</div>
+					<div className="w-[100px]">{t("downloads.format")}</div>
+					<div className="w-[80px]">{t("downloads.size")}</div>
+					<div className="w-[100px]">{t("downloads.date")}</div>
+					<div className="w-[80px]">{t("downloads.actions")}</div>
 				</div>
 
 				{/* Table Body */}
@@ -327,7 +338,7 @@ export default function DownloadsPage() {
 					{filteredFiles.length === 0 ? (
 						<div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
 							<FileX className="h-10 w-10 text-muted-foreground/40" />
-							<p className="text-sm">No files found</p>
+							<p className="text-sm">{t("downloads.noFiles")}</p>
 						</div>
 					) : (
 						filteredFiles.map((file, index) => (
@@ -380,12 +391,14 @@ export default function DownloadsPage() {
 									{/* Actions */}
 									<div className="w-[80px] flex items-center gap-1">
 										<button
+											type="button"
 											onClick={() => openFile(file.path)}
 											className="p-1.5 rounded hover:bg-background/50 text-slate-400 transition-colors"
 										>
 											<Play className="h-3.5 w-3.5" />
 										</button>
 										<button
+											type="button"
 											onClick={() => openInFolder(file.path)}
 											className="p-1.5 rounded hover:bg-background/50 text-slate-400 transition-colors"
 										>
@@ -395,6 +408,7 @@ export default function DownloadsPage() {
 										{/* Context Menu */}
 										<div className="relative" ref={contextMenuId === file.id ? contextRef : undefined}>
 											<button
+												type="button"
 												onClick={() =>
 													setContextMenuId((prev) =>
 														prev === file.id ? null : file.id,
@@ -407,6 +421,7 @@ export default function DownloadsPage() {
 											{contextMenuId === file.id && (
 												<div className="absolute right-0 top-full mt-1 w-40 bg-secondary border border-border rounded-lg p-1 shadow-lg z-50">
 													<button
+														type="button"
 														onClick={() => {
 															openFile(file.path);
 															setContextMenuId(null);
@@ -414,9 +429,10 @@ export default function DownloadsPage() {
 														className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm hover:bg-background/50 transition-colors"
 													>
 														<Play className="h-3.5 w-3.5" />
-														Play
+														{t("downloads.play")}
 													</button>
 													<button
+														type="button"
 														onClick={() => {
 															openInFolder(file.path);
 															setContextMenuId(null);
@@ -424,10 +440,11 @@ export default function DownloadsPage() {
 														className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm hover:bg-background/50 transition-colors"
 													>
 														<FolderOpen className="h-3.5 w-3.5" />
-														Show in Folder
+														{t("downloads.showInFolder")}
 													</button>
 													<div className="h-px bg-background my-1" />
 													<button
+														type="button"
 														onClick={async () => {
 															setContextMenuId(null);
 															await deleteFiles([file.id]);
@@ -440,7 +457,7 @@ export default function DownloadsPage() {
 														className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm text-red-400 hover:bg-background/50 transition-colors"
 													>
 														<Trash2 className="h-3.5 w-3.5" />
-														Delete
+														{t("downloads.delete")}
 													</button>
 												</div>
 											)}
@@ -461,11 +478,12 @@ export default function DownloadsPage() {
 							{selectedIds.size}
 						</span>
 						<span className="text-sm text-muted-foreground">
-							file{selectedIds.size > 1 ? "s" : ""} selected
+							{t("downloads.filesSelected", { count: selectedIds.size })}
 						</span>
 					</div>
 					<div className="flex items-center gap-2">
 						<button
+							type="button"
 							onClick={() => {
 								const firstSelected = files.find((f) => selectedIds.has(f.id));
 								if (firstSelected) openInFolder(firstSelected.path);
@@ -473,9 +491,10 @@ export default function DownloadsPage() {
 							className="flex items-center gap-2 bg-background rounded-md py-2 px-3.5 text-xs font-medium hover:bg-background/80 transition-colors"
 						>
 							<FolderOpen className="h-3.5 w-3.5" />
-							Open Folder
+							{t("downloads.openFolder")}
 						</button>
 						<button
+							type="button"
 							onClick={async () => {
 								await deleteFiles([...selectedIds]);
 								setSelectedIds(new Set());
@@ -483,7 +502,7 @@ export default function DownloadsPage() {
 							className="flex items-center gap-2 bg-background rounded-md py-2 px-3.5 text-xs font-medium text-red-400 hover:bg-background/80 transition-colors"
 						>
 							<Trash2 className="h-3.5 w-3.5" />
-							Delete
+							{t("downloads.delete")}
 						</button>
 					</div>
 				</div>

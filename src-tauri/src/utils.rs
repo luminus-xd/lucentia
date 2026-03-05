@@ -14,11 +14,11 @@ static INVALID_CHARS_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// アプリケーションデータディレクトリを取得し、存在しなければ作成する
 pub fn ensure_app_data_dir() -> Result<PathBuf, String> {
   let dir = dirs::data_dir()
-    .ok_or_else(|| "データディレクトリの取得に失敗しました".to_string())?
+    .ok_or_else(|| "error.data_dir_failed".to_string())?
     .join("my-video-downloader");
 
   fs::create_dir_all(&dir)
-    .map_err(|e| format!("ディレクトリの作成に失敗しました: {e}"))?;
+    .map_err(|e| format!("error.dir_create_failed:{e}"))?;
 
   Ok(dir)
 }
@@ -27,7 +27,7 @@ pub fn ensure_app_data_dir() -> Result<PathBuf, String> {
 pub fn get_download_dir() -> Result<PathBuf, String> {
   directories::UserDirs::new()
     .and_then(|ud| ud.download_dir().map(PathBuf::from))
-    .ok_or_else(|| "ダウンロードディレクトリの取得に失敗しました".to_string())
+    .ok_or_else(|| "error.download_dir_failed".to_string())
 }
 
 /// URLが有効かどうかを確認する関数
@@ -88,13 +88,13 @@ pub fn get_default_download_path(filename: &str) -> Result<String, String> {
   let download_dir = get_download_dir()?;
 
   if !download_dir.exists() || !download_dir.is_dir() {
-    return Err("ダウンロードディレクトリが存在しないか、ディレクトリではありません".to_string());
+    return Err("error.download_dir_not_exists".to_string());
   }
 
   let full_path = download_dir.join(filename);
 
   if !is_safe_path(&full_path) {
-    return Err("安全でないパスが生成されました".to_string());
+    return Err("error.unsafe_path_generated".to_string());
   }
 
   Ok(full_path.to_string_lossy().to_string())

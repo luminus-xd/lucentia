@@ -65,7 +65,7 @@ pub async fn update_yt_dlp() -> Result<String, String> {
 
   if yt_dlp_path.exists() {
     std::fs::remove_file(&yt_dlp_path)
-      .map_err(|e| format!("古いyt-dlpの削除に失敗: {e}"))?;
+      .map_err(|e| format!("error.ytdlp_delete_failed:{e}"))?;
     log::info!("古いyt-dlpバイナリを削除しました");
   }
 
@@ -90,12 +90,12 @@ pub async fn get_yt_dlp_version() -> Result<String, String> {
   let output = std::process::Command::new(&path)
     .arg("--version")
     .output()
-    .map_err(|e| format!("バージョン取得に失敗: {e}"))?;
+    .map_err(|e| format!("error.ytdlp_version_failed:{e}"))?;
 
   if output.status.success() {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
   } else {
-    Err("yt-dlpのバージョンを取得できませんでした".to_string())
+    Err("error.ytdlp_version_not_found".to_string())
   }
 }
 
@@ -103,7 +103,7 @@ pub async fn get_yt_dlp_version() -> Result<String, String> {
 async fn download_and_setup_yt_dlp(app_data_dir: &std::path::Path) -> Result<PathBuf, String> {
   let path = download_yt_dlp(app_data_dir)
     .await
-    .map_err(|e| format!("yt-dlpバイナリのダウンロードに失敗しました: {e}"))?;
+    .map_err(|e| format!("error.ytdlp_download_failed:{e}"))?;
 
   log::info!("yt-dlpバイナリをダウンロードしました: {}", path.display());
 
@@ -120,7 +120,7 @@ pub fn get_deno_dir() -> Result<PathBuf, String> {
   let app_data_dir = ensure_app_data_dir()?;
   let deno_dir = app_data_dir.join("deno");
   std::fs::create_dir_all(&deno_dir)
-    .map_err(|e| format!("Denoディレクトリの作成に失敗: {e}"))?;
+    .map_err(|e| format!("error.dir_create_failed:{e}"))?;
   Ok(deno_dir)
 }
 
@@ -166,7 +166,7 @@ fn deno_download_url() -> Result<String, String> {
   } else if cfg!(target_os = "linux") && cfg!(target_arch = "aarch64") {
     "deno-aarch64-unknown-linux-gnu.zip"
   } else {
-    return Err("このプラットフォームはDenoの自動ダウンロードに対応していません".to_string());
+    return Err("error.deno_not_supported".to_string());
   };
 
   Ok(format!(
@@ -181,20 +181,20 @@ async fn download_deno(dest_dir: &std::path::Path) -> Result<PathBuf, String> {
 
   let response = reqwest::get(&url)
     .await
-    .map_err(|e| format!("Denoのダウンロードに失敗: {e}"))?;
+    .map_err(|e| format!("error.deno_download_failed:{e}"))?;
 
   if !response.status().is_success() {
-    return Err(format!("Denoのダウンロードに失敗 (HTTP {})", response.status()));
+    return Err(format!("error.deno_download_http_failed:HTTP {}", response.status()));
   }
 
   let bytes = response
     .bytes()
     .await
-    .map_err(|e| format!("レスポンスの読み取りに失敗: {e}"))?;
+    .map_err(|e| format!("error.deno_response_failed:{e}"))?;
 
   let cursor = std::io::Cursor::new(bytes);
   let mut archive = zip::ZipArchive::new(cursor)
-    .map_err(|e| format!("ZIPの展開に失敗: {e}"))?;
+    .map_err(|e| format!("error.deno_zip_failed:{e}"))?;
 
   let binary_name = deno_binary_name();
   let deno_path = dest_dir.join(binary_name);
@@ -203,13 +203,13 @@ async fn download_deno(dest_dir: &std::path::Path) -> Result<PathBuf, String> {
   for i in 0..archive.len() {
     let mut file = archive
       .by_index(i)
-      .map_err(|e| format!("ZIPエントリの読み取りに失敗: {e}"))?;
+      .map_err(|e| format!("error.deno_zip_entry_failed:{e}"))?;
 
     if file.name().ends_with(binary_name) {
       let mut out = std::fs::File::create(&deno_path)
-        .map_err(|e| format!("ファイルの作成に失敗: {e}"))?;
+        .map_err(|e| format!("error.deno_file_create_failed:{e}"))?;
       std::io::copy(&mut file, &mut out)
-        .map_err(|e| format!("ファイルの書き込みに失敗: {e}"))?;
+        .map_err(|e| format!("error.deno_file_write_failed:{e}"))?;
 
       #[cfg(unix)]
       set_executable(&deno_path)?;
@@ -219,7 +219,7 @@ async fn download_deno(dest_dir: &std::path::Path) -> Result<PathBuf, String> {
     }
   }
 
-  Err("ZIP内にDenoバイナリが見つかりませんでした".to_string())
+  Err("error.deno_not_found_in_zip".to_string())
 }
 
 // ─── ユーティリティ ────────────────────────────────
@@ -229,10 +229,10 @@ async fn download_deno(dest_dir: &std::path::Path) -> Result<PathBuf, String> {
 fn set_executable(path: &std::path::Path) -> Result<(), String> {
   use std::os::unix::fs::PermissionsExt;
   let metadata = std::fs::metadata(path)
-    .map_err(|e| format!("メタデータの取得に失敗しました: {e}"))?;
+    .map_err(|e| format!("error.permission_failed:{e}"))?;
   let mut perms = metadata.permissions();
   perms.set_mode(0o755);
   std::fs::set_permissions(path, perms)
-    .map_err(|e| format!("権限の設定に失敗しました: {e}"))?;
+    .map_err(|e| format!("error.permission_failed:{e}"))?;
   Ok(())
 }

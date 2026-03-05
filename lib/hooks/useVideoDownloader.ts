@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useStableT, useTranslation } from "../i18n";
 import { notifyDownloadComplete, notifyDownloadError, warmUpAudioContext } from "../notifications";
 import type { AppSettings } from "./useSettings";
 
@@ -72,6 +73,7 @@ function isValidFolderPath(path: string): boolean {
 export function useVideoDownloader(
 	settings?: AppSettings,
 ): VideoDownloaderState & VideoDownloaderActions {
+	const { t } = useTranslation();
 	const [url, setUrlRaw] = useState("");
 	const [folderPath, setFolderPathRaw] = useState("");
 	const [audioOnly, setAudioOnly] = useState(false);
@@ -97,6 +99,7 @@ export function useVideoDownloader(
 	settingsRef.current = settings;
 	const metadataRef = useRef(metadata);
 	metadataRef.current = metadata;
+	const tRef = useStableT();
 
 	// URL入力のラッパー関数（検証を追加）
 	const setUrl = (newUrl: string) => {
@@ -105,15 +108,13 @@ export function useVideoDownloader(
 			setStatus("");
 			return;
 		}
-		setStatus(
-			"無効なURLです。http://またはhttps://で始まるURLを入力してください。",
-		);
+		setStatus(t("validation.invalidUrl"));
 	};
 
 	// フォルダパス入力のラッパー関数
 	const setFolderPath = (newPath: string) => {
 		if (!isValidFolderPath(newPath)) {
-			setStatus("無効なフォルダパスです。");
+			setStatus(t("validation.invalidPath"));
 			return;
 		}
 		setFolderPathRaw(newPath);
@@ -138,9 +139,9 @@ export function useVideoDownloader(
 					url,
 				});
 				setMetadata(result);
-				setStatus("メタデータを取得しました");
+				setStatus(tRef.current("status.metadataFetched"));
 			} catch (error) {
-				setStatus(`メタデータ取得エラー: ${error}`);
+				setStatus(tRef.current("status.metadataError", { error: String(error) }));
 			}
 		}, 1500);
 
@@ -169,31 +170,30 @@ export function useVideoDownloader(
 	}, [downloading]);
 
 	const handleDownload = useCallback(async () => {
+		const t = tRef.current;
 		// ユーザージェスチャーのスタック上で AudioContext を初期化・resume する
 		if (settingsRef.current?.notifSound) {
 			warmUpAudioContext();
 		}
 
 		if (!url) {
-			setStatus("動画URLを入力してください");
+			setStatus(t("validation.enterUrl"));
 			return;
 		}
 
 		// URLが無効な場合は処理しない
 		if (!isValidUrl(url)) {
-			setStatus(
-				"無効なURLです。http://またはhttps://で始まるURLを入力してください。",
-			);
+			setStatus(t("validation.invalidUrl"));
 			return;
 		}
 
 		// フォルダパスが無効な場合は処理しない
 		if (folderPath && !isValidFolderPath(folderPath)) {
-			setStatus("無効なフォルダパスです。");
+			setStatus(t("validation.invalidPath"));
 			return;
 		}
 
-		setStatus("ダウンロード中...");
+		setStatus(t("status.downloading"));
 		setStatusType("idle");
 		setDownloading(true);
 		setProgress({ percent: 0, speed: null, eta: null });
@@ -210,23 +210,23 @@ export function useVideoDownloader(
 			});
 			setProgress({ percent: 100, speed: null, eta: null });
 			setStatusType("success");
-			setStatus("ダウンロードが完了しました");
+			setStatus(t("status.complete"));
 			setShowCompletedProgress(true);
 			setTimeout(() => setShowCompletedProgress(false), 2000);
-			toast.success("ダウンロードが完了しました", {
+			toast.success(t("toast.downloadComplete"), {
 				description: outputPath,
 				duration: 8000,
 			});
-			notifyDownloadComplete(settingsRef.current, metadataRef.current?.title, outputPath);
+			notifyDownloadComplete(settingsRef.current, t("osNotification.downloadComplete"), metadataRef.current?.title, outputPath);
 		} catch (error) {
 			setStatusType("error");
-			setStatus(`ダウンロードエラー: ${error}`);
-			toast.error("ダウンロードに失敗しました", {
+			setStatus(t("status.error", { error: String(error) }));
+			toast.error(t("toast.downloadFailed"), {
 				description: String(error),
 				duration: 8000,
 			});
 			setProgress({ percent: 0, speed: null, eta: null });
-			notifyDownloadError(settingsRef.current, String(error));
+			notifyDownloadError(settingsRef.current, t("osNotification.downloadError"), String(error));
 		} finally {
 			setDownloading(false);
 		}

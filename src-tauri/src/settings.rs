@@ -23,6 +23,12 @@ pub struct AppSettings {
   pub notif_complete: bool,
   pub notif_error: bool,
   pub notif_sound: bool,
+  #[serde(default = "default_language")]
+  pub language: String,
+}
+
+fn default_language() -> String {
+  "ja".to_string()
 }
 
 impl Default for AppSettings {
@@ -41,6 +47,7 @@ impl Default for AppSettings {
       notif_complete: true,
       notif_error: true,
       notif_sound: false,
+      language: default_language(),
     }
   }
 }
@@ -57,7 +64,7 @@ pub fn ensure_save_dir_structure(save_path: &str) -> Result<(), String> {
 
   for dir in &dirs {
     fs::create_dir_all(dir)
-      .map_err(|e| format!("ディレクトリの作成に失敗: {} - {e}", dir.display()))?;
+      .map_err(|e| format!("error.dir_create_failed:{} - {e}", dir.display()))?;
   }
 
   Ok(())
@@ -125,11 +132,11 @@ pub fn load_settings() -> Result<AppSettings, String> {
   }
 
   let content =
-    fs::read_to_string(&path).map_err(|e| format!("設定ファイルの読み込みに失敗: {e}"))?;
+    fs::read_to_string(&path).map_err(|e| format!("error.settings_read_failed:{e}"))?;
 
   serde_json::from_str(&content).map_err(|e| {
     log::warn!("設定ファイルのパースに失敗: {e}、デフォルト値を使用します");
-    format!("設定ファイルのパースに失敗: {e}")
+    format!("error.settings_parse_failed:{e}")
   })
 }
 
@@ -138,9 +145,9 @@ pub fn save_settings(settings: &AppSettings) -> Result<(), String> {
   let path = settings_path()?;
 
   let content = serde_json::to_string_pretty(settings)
-    .map_err(|e| format!("設定のシリアライズに失敗: {e}"))?;
+    .map_err(|e| format!("error.settings_serialize_failed:{e}"))?;
 
-  fs::write(&path, content).map_err(|e| format!("設定ファイルの書き込みに失敗: {e}"))?;
+  fs::write(&path, content).map_err(|e| format!("error.settings_write_failed:{e}"))?;
 
   log::info!("設定を保存しました: {}", path.display());
   Ok(())

@@ -11,6 +11,7 @@ import { useHistory, formatBytes } from "@/lib/hooks/useHistory";
 import { useSettings } from "@/lib/hooks/useSettings";
 import { useVideoDownloader } from "@/lib/hooks/useVideoDownloader";
 import { ensureNotificationPermission } from "@/lib/notifications";
+import { useTranslation } from "@/lib/i18n";
 import { FORMAT_OPTIONS, getFormatLabel } from "@/lib/utils";
 import {
 	ArrowDownToLine,
@@ -38,6 +39,7 @@ export default function DashboardPage() {
 	} = useVideoDownloader(settings);
 
 	const { stats: dlStats, successRate } = useHistory();
+	const { t } = useTranslation();
 
 	// 通知がONの場合、権限をリクエストする
 	useEffect(() => {
@@ -50,30 +52,30 @@ export default function DashboardPage() {
 
 	const stats = [
 		{
-			label: "TOTAL DOWNLOADS",
+			label: t("dashboard.totalDownloads"),
 			value: dlStats.monthCount.toLocaleString(),
-			sub: `+${dlStats.todayCount} today`,
+			sub: t("dashboard.todayCount", { count: dlStats.todayCount }),
 			subColor: "text-cyan",
 			icon: <TrendingUp className="size-4 text-cyan" />,
 		},
 		{
-			label: "STORAGE USED",
+			label: t("dashboard.storageUsed"),
 			value: formatBytes(dlStats.monthSize),
-			sub: "this month",
+			sub: t("dashboard.thisMonth"),
 			subColor: "text-[#64748B]",
 			icon: <HardDrive className="size-4 text-[#64748B]" />,
 		},
 		{
-			label: "ACTIVE QUEUE",
+			label: t("dashboard.activeQueue"),
 			value: String(activeCount),
-			sub: "processing now",
+			sub: t("dashboard.processingNow"),
 			subColor: "text-cyan",
 			icon: <ListOrdered className="size-4 text-cyan" />,
 		},
 		{
-			label: "SUCCESS RATE",
+			label: t("dashboard.successRate"),
 			value: successRate != null ? `${successRate}%` : "--",
-			sub: "last 30 days",
+			sub: t("dashboard.last30Days"),
 			subColor: "text-[#64748B]",
 			icon: <Trophy className="size-4 text-[#64748B]" />,
 		},
@@ -85,19 +87,19 @@ export default function DashboardPage() {
 			<div className="flex items-center justify-between">
 				<div>
 					<h1 className="text-[28px] font-semibold leading-tight">
-						Dashboard
+						{t("dashboard.title")}
 					</h1>
 					<p className="text-sm text-[#64748B]">
-						Download and manage your YouTube videos
+						{t("dashboard.description")}
 					</p>
 				</div>
 			</div>
 
 			{/* URL Input Section */}
 			<div className="flex flex-col gap-3">
-				<label className="text-[11px] font-semibold tracking-[2px] text-[#64748B] uppercase">
-					PASTE URL
-				</label>
+				<span className="text-[11px] font-semibold tracking-[2px] text-[#64748B] uppercase">
+					{t("dashboard.pasteUrl")}
+				</span>
 				<div className="flex gap-3">
 					<div className="relative flex-1">
 						<Link className="absolute top-1/2 left-4 size-4 -translate-y-1/2 text-[#64748B]" />
@@ -127,7 +129,7 @@ export default function DashboardPage() {
 						disabled={downloading || !url}
 						className="flex h-12 items-center gap-2 rounded-lg bg-cyan px-6 font-semibold text-cyan-foreground transition-colors hover:bg-cyan/90 disabled:cursor-not-allowed disabled:opacity-50"
 					>
-						Download
+						{t("dashboard.download")}
 						<ArrowDownToLine className="size-4" />
 					</button>
 				</div>
@@ -158,7 +160,7 @@ export default function DashboardPage() {
 			<div className="flex min-h-0 flex-1 flex-col gap-4">
 				<div className="flex items-center gap-3">
 					<span className="text-[11px] font-semibold tracking-[2px] text-[#64748B] uppercase">
-						DOWNLOAD QUEUE
+						{t("dashboard.downloadQueue")}
 					</span>
 					<span className="rounded bg-cyan px-2.5 py-1 text-[11px] font-bold text-cyan-foreground">
 						{metadata ? 1 : 0}
@@ -168,7 +170,7 @@ export default function DashboardPage() {
 				{!metadata ? (
 					<div className="flex flex-1 items-center justify-center rounded-lg bg-[#1E293B] py-16">
 						<p className="text-sm text-[#64748B]">
-							No downloads in queue. Paste a URL above to get started.
+							{t("dashboard.queueEmpty")}
 						</p>
 					</div>
 				) : (
@@ -196,7 +198,7 @@ export default function DashboardPage() {
 									) : (
 										<span className="flex shrink-0 items-center gap-1 text-xs font-medium text-cyan">
 											<Check className="size-3" />
-											Done
+											{t("dashboard.done")}
 										</span>
 									)}
 								</div>

@@ -17,11 +17,14 @@ import {
 	AlertCircle,
 	FolderOpen,
 	Check,
+	Globe,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useAppVersion } from "@/lib/hooks/useAppVersion";
 import { useSettings } from "@/lib/hooks/useSettings";
 import { FORMAT_OPTIONS } from "@/lib/utils";
+import { useTranslation, type Locale } from "@/lib/i18n";
+
 const BROWSER_OPTIONS = [
 	{ value: "", label: "None (disabled)" },
 	{ value: "chrome", label: "Chrome" },
@@ -98,11 +101,23 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function SettingsPage() {
+	const { locale, setLocale, t } = useTranslation();
 	const { settings, pathStatus, loading, hasChanges, saveSettings, updateField, changeSavePath, resetSettings } = useSettings();
 	const appVersion = useAppVersion();
 	const [ytDlpVersion, setYtDlpVersion] = useState<string>("...");
 	const [updating, setUpdating] = useState(false);
 	const [changingPath, setChangingPath] = useState(false);
+
+	const browserLabel = (value: string, label: string) =>
+		value === "" ? t("settings.browserNone") : label;
+
+	const qualityLabels: Record<string, string> = {
+		"2160p": t("settings.q2160"),
+		"1440p": t("settings.q1440"),
+		"1080p": t("settings.q1080"),
+		"720p": t("settings.q720"),
+		"480p": t("settings.q480"),
+	};
 
 	useEffect(() => {
 		invoke<string>("get_yt_dlp_version").then(setYtDlpVersion).catch(() => setYtDlpVersion("not found"));
@@ -110,7 +125,7 @@ export default function SettingsPage() {
 
 	const handleSave = async () => {
 		await saveSettings(settings);
-		toast.success("Settings saved");
+		toast.success(t("toast.settingsSaved"));
 	};
 
 	const handleChangeSavePath = useCallback(async () => {
@@ -121,49 +136,49 @@ export default function SettingsPage() {
 		setChangingPath(true);
 		try {
 			await changeSavePath(newPath);
-			toast.success("保存先を変更しました", { description: newPath });
+			toast.success(t("toast.savePathChanged"), { description: newPath });
 		} catch (e) {
-			toast.error(`保存先の変更に失敗: ${e}`);
+			toast.error(t("toast.savePathError", { error: String(e) }));
 		} finally {
 			setChangingPath(false);
 		}
-	}, [changeSavePath]);
+	}, [changeSavePath, t]);
 
 	const handleClearCache = useCallback(async () => {
 		try {
 			await invoke("clear_cache");
-			toast.success("キャッシュを削除しました");
+			toast.success(t("toast.cacheCleared"));
 		} catch (e) {
-			toast.error(`キャッシュの削除に失敗: ${e}`);
+			toast.error(t("toast.cacheClearError", { error: String(e) }));
 		}
-	}, []);
+	}, [t]);
 
 	const handleResetSettings = useCallback(async () => {
 		try {
 			await resetSettings();
-			toast.success("設定をリセットしました");
+			toast.success(t("toast.settingsReset"));
 		} catch (e) {
-			toast.error(`設定のリセットに失敗: ${e}`);
+			toast.error(t("toast.settingsResetError", { error: String(e) }));
 		}
-	}, [resetSettings]);
+	}, [resetSettings, t]);
 
 	const handleUpdateYtDlp = useCallback(async () => {
 		setUpdating(true);
 		try {
 			const version = await invoke<string>("update_yt_dlp");
 			setYtDlpVersion(version);
-			toast.success(`yt-dlp updated to ${version}`);
+			toast.success(t("toast.ytDlpUpdated", { version }));
 		} catch (e) {
-			toast.error(`Update failed: ${e}`);
+			toast.error(t("toast.ytDlpUpdateError", { error: String(e) }));
 		} finally {
 			setUpdating(false);
 		}
-	}, []);
+	}, [t]);
 
 	if (loading) {
 		return (
 			<div className="flex items-center justify-center h-full">
-				<p className="text-muted-foreground">Loading settings...</p>
+				<p className="text-muted-foreground">{t("settings.loading")}</p>
 			</div>
 		);
 	}
@@ -173,9 +188,9 @@ export default function SettingsPage() {
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-[28px] font-semibold">Settings</h1>
+					<h1 className="text-[28px] font-semibold">{t("settings.title")}</h1>
 					<p className="text-sm text-muted-foreground">
-						Configure your download preferences
+						{t("settings.description")}
 					</p>
 				</div>
 				<button
@@ -185,7 +200,7 @@ export default function SettingsPage() {
 					className="flex items-center gap-2 rounded-lg bg-cyan px-5 h-10 text-sm font-semibold text-cyan-foreground transition-colors enabled:hover:bg-cyan/90 disabled:opacity-40 disabled:cursor-not-allowed"
 				>
 					<Save className="h-4 w-4" />
-					Save Changes
+					{t("settings.saveChanges")}
 				</button>
 			</div>
 
@@ -195,10 +210,10 @@ export default function SettingsPage() {
 				<div className="flex flex-col gap-6">
 					{/* Download Settings */}
 					<div className="bg-card rounded-xl p-6 flex flex-col gap-5">
-						<SectionHeader icon={Download} label="Download Settings" />
+						<SectionHeader icon={Download} label={t("settings.downloadSettings")} />
 
 						<div className="flex flex-col gap-2">
-							<FieldLabel>SAVE LOCATION</FieldLabel>
+							<FieldLabel>{t("settings.saveLocation")}</FieldLabel>
 
 							{/* パスが無効な場合の警告バナー */}
 							{pathStatus && !pathStatus.valid && (
@@ -206,10 +221,10 @@ export default function SettingsPage() {
 									<AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
 									<div className="flex flex-col gap-0.5">
 										<span className="text-xs font-medium text-red-400">
-											保存先フォルダが見つかりません
+											{t("settings.pathNotFound")}
 										</span>
 										<span className="text-[11px] text-red-400/70">
-											フォルダが削除されたか、アクセスできません。新しい保存先を選択してください。
+											{t("settings.pathNotFoundDesc")}
 										</span>
 									</div>
 								</div>
@@ -233,7 +248,7 @@ export default function SettingsPage() {
 									) : (
 										<FolderOpen className="h-4 w-4" />
 									)}
-									変更
+									{t("settings.change")}
 								</button>
 							</div>
 
@@ -253,7 +268,7 @@ export default function SettingsPage() {
 						</div>
 
 						<div className="flex flex-col gap-2">
-							<FieldLabel>DEFAULT FORMAT</FieldLabel>
+							<FieldLabel>{t("settings.defaultFormat")}</FieldLabel>
 							<div className="flex gap-2">
 								{Object.entries(FORMAT_OPTIONS).map(([key, label]) => (
 									<button
@@ -273,18 +288,18 @@ export default function SettingsPage() {
 						</div>
 
 						<div className="flex flex-col gap-2">
-							<FieldLabel>DEFAULT QUALITY</FieldLabel>
+							<FieldLabel>{t("settings.defaultQuality")}</FieldLabel>
 							<div className="relative">
 								<select
 									value={settings.defaultQuality}
 									onChange={(e) => updateField("defaultQuality", e.target.value)}
 									className="w-full h-11 bg-[#0F172A] border border-border rounded-lg px-3 text-sm outline-none appearance-none focus:border-cyan/50"
 								>
-									<option value="2160p">2160p (4K)</option>
-									<option value="1440p">1440p (QHD)</option>
-									<option value="1080p">1080p (Full HD)</option>
-									<option value="720p">720p (HD)</option>
-									<option value="480p">480p (SD)</option>
+									<option value="2160p">{qualityLabels["2160p"]}</option>
+									<option value="1440p">{qualityLabels["1440p"]}</option>
+									<option value="1080p">{qualityLabels["1080p"]}</option>
+									<option value="720p">{qualityLabels["720p"]}</option>
+									<option value="480p">{qualityLabels["480p"]}</option>
 								</select>
 								<ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
 							</div>
@@ -293,10 +308,10 @@ export default function SettingsPage() {
 						<div className="flex items-center justify-between">
 							<div className="flex flex-col gap-0.5">
 								<span className="text-sm font-medium">
-									Concurrent Downloads
+									{t("settings.concurrent")}
 								</span>
 								<span className="text-xs text-muted-foreground">
-									Maximum simultaneous downloads
+									{t("settings.concurrentDesc")}
 								</span>
 							</div>
 							<input
@@ -310,7 +325,7 @@ export default function SettingsPage() {
 						</div>
 
 						<div className="flex flex-col gap-2">
-							<FieldLabel>BROWSER COOKIES</FieldLabel>
+							<FieldLabel>{t("settings.browserCookies")}</FieldLabel>
 							<div className="flex flex-col gap-1.5">
 								<div className="relative">
 									<select
@@ -325,14 +340,14 @@ export default function SettingsPage() {
 									>
 										{BROWSER_OPTIONS.map((opt) => (
 											<option key={opt.value} value={opt.value}>
-												{opt.label}
+												{browserLabel(opt.value, opt.label)}
 											</option>
 										))}
 									</select>
 									<ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
 								</div>
 								<span className="text-[11px] text-muted-foreground">
-									YouTube authentication to bypass bot detection
+									{t("settings.browserCookiesDesc")}
 								</span>
 							</div>
 						</div>
@@ -341,25 +356,64 @@ export default function SettingsPage() {
 
 				{/* Right Column */}
 				<div className="flex flex-col gap-6">
+					{/* Language */}
+					<div className="bg-card rounded-xl p-6 flex flex-col gap-5">
+						<SectionHeader icon={Globe} label={t("settings.languageSection")} />
+						<div className="flex items-center justify-between">
+							<div className="flex flex-col gap-0.5">
+								<span className="text-sm font-medium">
+									{t("settings.languageSection")}
+								</span>
+								<span className="text-xs text-muted-foreground">
+									{t("settings.languageDesc")}
+								</span>
+							</div>
+							<div className="flex rounded-lg border border-border overflow-hidden">
+								<button
+									type="button"
+									onClick={() => setLocale("ja")}
+									className={`px-4 py-2 text-sm font-medium transition-colors ${
+										locale === "ja"
+											? "bg-cyan text-cyan-foreground"
+											: "bg-[#0F172A] text-foreground hover:bg-[#0F172A]/80"
+									}`}
+								>
+									日本語
+								</button>
+								<button
+									type="button"
+									onClick={() => setLocale("en")}
+									className={`px-4 py-2 text-sm font-medium transition-colors ${
+										locale === "en"
+											? "bg-cyan text-cyan-foreground"
+											: "bg-[#0F172A] text-foreground hover:bg-[#0F172A]/80"
+									}`}
+								>
+									English
+								</button>
+							</div>
+						</div>
+					</div>
+
 					{/* Notifications */}
 					<div className="bg-card rounded-xl p-6 flex flex-col gap-5">
-						<SectionHeader icon={Bell} label="Notifications" />
+						<SectionHeader icon={Bell} label={t("settings.notifications")} />
 
 						<ToggleRow
-							label="Download Complete"
-							description="Show notification when download finishes"
+							label={t("settings.notifComplete")}
+							description={t("settings.notifCompleteDesc")}
 							checked={settings.notifComplete}
 							onCheckedChange={(v) => updateField("notifComplete", v)}
 						/>
 						<ToggleRow
-							label="Error Alerts"
-							description="Show notification on download errors"
+							label={t("settings.notifError")}
+							description={t("settings.notifErrorDesc")}
 							checked={settings.notifError}
 							onCheckedChange={(v) => updateField("notifError", v)}
 						/>
 						<ToggleRow
-							label="Sound Effects"
-							description="Play sound on download events"
+							label={t("settings.notifSound")}
+							description={t("settings.notifSoundDesc")}
 							checked={settings.notifSound}
 							onCheckedChange={(v) => updateField("notifSound", v)}
 						/>
@@ -367,11 +421,11 @@ export default function SettingsPage() {
 
 					{/* About */}
 					<div className="bg-card rounded-xl p-6 flex flex-col gap-5">
-						<SectionHeader icon={Info} label="About" />
+						<SectionHeader icon={Info} label={t("settings.about")} />
 
-						<InfoRow label="App Version" value={appVersion ? `v${appVersion}` : "..."} />
-						<InfoRow label="yt-dlp Version" value={ytDlpVersion} />
-						<InfoRow label="Runtime" value="Tauri 2" />
+						<InfoRow label={t("settings.appVersion")} value={appVersion ? `v${appVersion}` : "..."} />
+						<InfoRow label={t("settings.ytDlpVersion")} value={ytDlpVersion} />
+						<InfoRow label={t("settings.runtime")} value="Tauri 2" />
 
 						<div className="h-px bg-[#0F172A]" />
 
@@ -386,19 +440,19 @@ export default function SettingsPage() {
 							) : (
 								<RefreshCw className="h-4 w-4" />
 							)}
-							{updating ? "Updating yt-dlp..." : "Update yt-dlp"}
+							{updating ? t("settings.updatingYtDlp") : t("settings.updateYtDlp")}
 						</button>
 					</div>
 
 					{/* Danger Zone */}
 					<div className="bg-card rounded-xl p-6 flex flex-col gap-4 border border-[#47556933]">
-						<SectionHeader icon={TriangleAlert} label="Danger Zone" muted />
+						<SectionHeader icon={TriangleAlert} label={t("settings.dangerZone")} muted />
 
 						<div className="flex items-center justify-between">
 							<div className="flex flex-col gap-0.5">
-								<span className="text-sm font-medium">Clear Cache</span>
+								<span className="text-sm font-medium">{t("settings.clearCache")}</span>
 								<span className="text-xs text-muted-foreground">
-									Remove yt-dlp cache data
+									{t("settings.clearCacheDesc")}
 								</span>
 							</div>
 							<button
@@ -406,15 +460,15 @@ export default function SettingsPage() {
 								onClick={handleClearCache}
 								className="px-3 h-8 bg-[#0F172A] border border-[#475569] rounded-md text-sm hover:bg-[#0F172A]/80 transition-colors"
 							>
-								Clear
+								{t("settings.clearBtn")}
 							</button>
 						</div>
 
 						<div className="flex items-center justify-between">
 							<div className="flex flex-col gap-0.5">
-								<span className="text-sm font-medium">Reset All Settings</span>
+								<span className="text-sm font-medium">{t("settings.resetSettings")}</span>
 								<span className="text-xs text-muted-foreground">
-									Restore all settings to defaults
+									{t("settings.resetSettingsDesc")}
 								</span>
 							</div>
 							<button
@@ -422,7 +476,7 @@ export default function SettingsPage() {
 								onClick={handleResetSettings}
 								className="px-3 h-8 bg-[#0F172A] border border-[#475569] rounded-md text-sm hover:bg-[#0F172A]/80 transition-colors"
 							>
-								Reset
+								{t("settings.resetBtn")}
 							</button>
 						</div>
 					</div>

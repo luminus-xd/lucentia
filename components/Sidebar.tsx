@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAppVersion } from "@/lib/hooks/useAppVersion";
+import { useTranslation } from "@/lib/i18n";
 import {
 	Sparkles,
 	LayoutDashboard,
@@ -10,17 +11,20 @@ import {
 	Clock,
 	Settings,
 } from "lucide-react";
+import type { TranslationKey } from "@/lib/i18n";
+import type { LucideIcon } from "lucide-react";
 
-const navItems = [
-	{ href: "/", label: "Dashboard", icon: LayoutDashboard },
-	{ href: "/downloads", label: "Downloads", icon: Download },
-	{ href: "/history", label: "History", icon: Clock },
-	{ href: "/settings", label: "Settings", icon: Settings },
-] as const;
+const navItems: { href: string; labelKey: TranslationKey; icon: LucideIcon }[] = [
+	{ href: "/", labelKey: "nav.dashboard", icon: LayoutDashboard },
+	{ href: "/downloads", labelKey: "nav.downloads", icon: Download },
+	{ href: "/history", labelKey: "nav.history", icon: Clock },
+	{ href: "/settings", labelKey: "nav.settings", icon: Settings },
+];
 
 export function Sidebar() {
 	const pathname = usePathname();
 	const version = useAppVersion();
+	const { t } = useTranslation();
 
 	return (
 		<aside className="w-60 shrink-0 bg-sidebar flex flex-col h-screen border-r border-border/50">
@@ -38,7 +42,7 @@ export function Sidebar() {
 
 				{/* ナビゲーション */}
 				<nav className="flex flex-col gap-1 pt-2">
-					{navItems.map(({ href, label, icon: Icon }) => {
+					{navItems.map(({ href, labelKey, icon: Icon }) => {
 						const isActive =
 							href === "/" ? pathname === "/" : pathname.startsWith(href);
 						return (
@@ -52,7 +56,7 @@ export function Sidebar() {
 								}`}
 							>
 								<Icon className="h-4 w-4" />
-								{label}
+								{t(labelKey)}
 							</Link>
 						);
 					})}

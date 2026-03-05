@@ -49,7 +49,7 @@ pub async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
   log::info!("Downloading metadata: {url}");
 
   if !is_valid_url(&url) {
-    return Err("有効なURLではありません".to_string());
+    return Err("error.invalid_url".to_string());
   }
 
   let cleaned_url = clean_timestamp_param(&url);
@@ -108,10 +108,10 @@ pub async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
           duration,
         })
       } else {
-        Err("Error getting title".to_string())
+        Err("error.get_title_failed".to_string())
       }
     }
-    Err(e) => Err(e.to_string()),
+    Err(e) => Err(format!("error.metadata_failed:{e}")),
   }
 }
 
@@ -157,7 +157,7 @@ pub async fn download_video(
   log::info!("Downloading video: {url}");
 
   if !is_valid_url(&url) {
-    return Err("有効なURLではありません".to_string());
+    return Err("error.invalid_url".to_string());
   }
 
   let cleaned_url = clean_timestamp_param(&url);
@@ -184,7 +184,7 @@ pub async fn download_video(
   let resolve_folder = |p: &str| -> Result<String, String> {
     let path = Path::new(p);
     if !path.is_dir() {
-      return Err("指定されたパスが存在しないか、ディレクトリではありません".to_string());
+      return Err("error.path_not_dir".to_string());
     }
     // audio/video でサブディレクトリを振り分け
     let subdir = if audio_only { settings::SUBDIR_AUDIO } else { settings::SUBDIR_VIDEOS };
@@ -193,7 +193,7 @@ pub async fn download_video(
 
     let full_path = target_dir.join(&output_filename);
     if !is_safe_path(&full_path) {
-      return Err("安全でないパスが指定されました".to_string());
+      return Err("error.unsafe_path".to_string());
     }
     Ok(full_path.to_string_lossy().to_string())
   };
@@ -212,13 +212,13 @@ pub async fn download_video(
   let mut output_path = if Path::new(&base_output_path).exists() {
     let dir = Path::new(&base_output_path)
       .parent()
-      .ok_or("パスの親ディレクトリを取得できませんでした")?;
+      .ok_or("error.parent_dir_failed")?;
     let stem = Path::new(&output_filename)
       .file_stem()
-      .ok_or("ファイル名からステム部分を取得できませんでした")?;
+      .ok_or("error.parent_dir_failed")?;
     let ext = Path::new(&output_filename)
       .extension()
-      .ok_or("ファイル名から拡張子を取得できませんでした")?;
+      .ok_or("error.parent_dir_failed")?;
 
     let uuid_str = Uuid::new_v4().to_string();
     let uuid = uuid_str.split('-').next().unwrap_or("unique");
@@ -316,10 +316,10 @@ pub async fn download_video(
 
     let _ = history::add_entry(build_history_entry(
       &url, &filename_base, extension, best_quality,
-      HistoryStatus::Failed, None, Some("ファイルが見つかりません".to_string()),
+      HistoryStatus::Failed, None, Some("error.file_not_found".to_string()),
     ));
 
-    Err("ダウンロードは成功しましたが、ファイルが見つかりません".to_string())
+    Err("error.file_not_found".to_string())
   }
 }
 
@@ -413,16 +413,16 @@ async fn run_yt_dlp_with_progress(
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
-    .map_err(|e| format!("yt-dlpの起動に失敗しました: {e}"))?;
+    .map_err(|e| format!("error.ytdlp_spawn:{e}"))?;
 
   let stdout = child
     .stdout
     .take()
-    .ok_or("stdoutの取得に失敗しました")?;
+    .ok_or("error.stdout_failed")?;
   let stderr = child
     .stderr
     .take()
-    .ok_or("stderrの取得に失敗しました")?;
+    .ok_or("error.stderr_failed")?;
 
   // stderr をバックグラウンドで収集（エラー報告用）
   let stderr_handle = tokio::spawn(async move {
@@ -493,15 +493,15 @@ async fn run_yt_dlp_with_progress(
   let status = child
     .wait()
     .await
-    .map_err(|e| format!("プロセスの終了待ちに失敗: {e}"))?;
+    .map_err(|e| format!("error.process_failed:{e}"))?;
 
   let stderr_output = stderr_handle.await.unwrap_or_default();
 
   if !status.success() {
     log::error!("yt-dlpがエラーで終了しました: {stderr_output}");
     return Err(format!(
-      "ダウンロードに失敗しました: {}",
-      stderr_output.lines().last().unwrap_or("不明なエラー")
+      "error.download_failed:{}",
+      stderr_output.lines().last().unwrap_or("unknown error")
     ));
   }
 
@@ -631,7 +631,7 @@ pub fn clear_cache() -> Result<(), String> {
     match std::fs::remove_dir_all(&dir) {
       Ok(()) => log::info!("キャッシュを削除しました: {}", dir.display()),
       Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-      Err(e) => return Err(format!("キャッシュの削除に失敗: {e}")),
+      Err(e) => return Err(format!("error.cache_clear_failed:{e}")),
     }
   }
 
@@ -700,7 +700,7 @@ pub fn list_downloaded_files() -> Result<Vec<DownloadedFile>, String> {
     }
 
     let entries = std::fs::read_dir(dir)
-      .map_err(|e| format!("ディレクトリの読み取りに失敗: {e}"))?;
+      .map_err(|e| format!("error.dir_read_failed:{e}"))?;
 
     for entry in entries.flatten() {
       let path = entry.path();
@@ -778,22 +778,22 @@ pub fn delete_downloaded_files(ids: Vec<String>) -> Result<(), String> {
   let save_path = &app_settings.save_path;
 
   if save_path.is_empty() {
-    return Err("保存先パスが設定されていません".to_string());
+    return Err("error.save_path_not_set".to_string());
   }
 
   let base = std::fs::canonicalize(save_path)
-    .map_err(|e| format!("保存先パスの正規化に失敗: {e}"))?;
+    .map_err(|e| format!("error.path_canon_failed:{e}"))?;
 
   for id in &ids {
     let file_path = Path::new(id);
 
     // パスが保存ディレクトリ内にあることを検証
     let canonical = std::fs::canonicalize(file_path)
-      .map_err(|e| format!("パスの正規化に失敗: {id} - {e}"))?;
+      .map_err(|e| format!("error.path_canon_failed:{id} - {e}"))?;
 
     if !canonical.starts_with(&base) {
       return Err(format!(
-        "安全でないパスが指定されました: {id} は保存ディレクトリ外です"
+        "error.unsafe_path_outside:{id}"
       ));
     }
 
@@ -802,7 +802,7 @@ pub fn delete_downloaded_files(ids: Vec<String>) -> Result<(), String> {
       Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
         log::warn!("削除対象のファイルが見つかりません: {id}");
       }
-      Err(e) => return Err(format!("ファイルの削除に失敗: {id} - {e}")),
+      Err(e) => return Err(format!("error.file_delete_failed:{id} - {e}")),
     }
   }
 
@@ -818,7 +818,7 @@ pub fn open_file_in_folder(path: String) -> Result<(), String> {
       .arg("-R")
       .arg(&path)
       .spawn()
-      .map_err(|e| format!("Finderでの表示に失敗: {e}"))?;
+      .map_err(|e| format!("error.finder_failed:{e}"))?;
   }
 
   #[cfg(target_os = "windows")]
@@ -826,7 +826,7 @@ pub fn open_file_in_folder(path: String) -> Result<(), String> {
     std::process::Command::new("explorer")
       .arg(format!("/select,{path}"))
       .spawn()
-      .map_err(|e| format!("エクスプローラーでの表示に失敗: {e}"))?;
+      .map_err(|e| format!("error.explorer_failed:{e}"))?;
   }
 
   #[cfg(target_os = "linux")]
@@ -834,11 +834,11 @@ pub fn open_file_in_folder(path: String) -> Result<(), String> {
     let file_path = Path::new(&path);
     let parent = file_path
       .parent()
-      .ok_or("親ディレクトリの取得に失敗しました")?;
+      .ok_or("error.parent_dir_failed")?;
     std::process::Command::new("xdg-open")
       .arg(parent)
       .spawn()
-      .map_err(|e| format!("ファイルマネージャでの表示に失敗: {e}"))?;
+      .map_err(|e| format!("error.file_manager_failed:{e}"))?;
   }
 
   Ok(())
@@ -852,7 +852,7 @@ pub fn open_file(path: String) -> Result<(), String> {
     std::process::Command::new("open")
       .arg(&path)
       .spawn()
-      .map_err(|e| format!("ファイルを開けませんでした: {e}"))?;
+      .map_err(|e| format!("error.file_open_failed:{e}"))?;
   }
 
   #[cfg(target_os = "windows")]
@@ -860,7 +860,7 @@ pub fn open_file(path: String) -> Result<(), String> {
     std::process::Command::new("cmd")
       .args(["/C", "start", "", &path])
       .spawn()
-      .map_err(|e| format!("ファイルを開けませんでした: {e}"))?;
+      .map_err(|e| format!("error.file_open_failed:{e}"))?;
   }
 
   #[cfg(target_os = "linux")]
@@ -868,7 +868,7 @@ pub fn open_file(path: String) -> Result<(), String> {
     std::process::Command::new("xdg-open")
       .arg(&path)
       .spawn()
-      .map_err(|e| format!("ファイルを開けませんでした: {e}"))?;
+      .map_err(|e| format!("error.file_open_failed:{e}"))?;
   }
 
   Ok(())
@@ -906,12 +906,12 @@ async fn get_video_title(url: &str, yt_dlp_path: &str) -> Result<String, String>
           &video.title.unwrap_or_else(|| "No Title".to_string()),
         ))
       } else {
-        Err("Error getting title".to_string())
+        Err("error.get_title_failed".to_string())
       }
     }
     Err(e) => {
       log::error!("メタデータ取得エラー: {e:?}");
-      Err(format!("動画情報の取得に失敗しました: {e}"))
+      Err(format!("error.video_info_failed:{e}"))
     }
   }
 }

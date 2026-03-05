@@ -3,6 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useStableT } from "../i18n";
 
 /** ダウンロード済みファイルの情報 */
 export interface DownloadedFile {
@@ -18,6 +19,7 @@ export interface DownloadedFile {
 
 /** ダウンロード済みファイル一覧の取得・操作フック */
 export function useDownloadedFiles() {
+	const tRef = useStableT();
 	const [files, setFiles] = useState<DownloadedFile[]>([]);
 	const [loading, setLoading] = useState(true);
 
@@ -38,9 +40,9 @@ export function useDownloadedFiles() {
 		try {
 			await invoke("delete_downloaded_files", { ids });
 			setFiles((prev) => prev.filter((f) => !ids.includes(f.id)));
-			toast.success(`${ids.length}件のファイルを削除しました`);
+			toast.success(tRef.current("toast.filesDeleted", { count: ids.length }));
 		} catch (e) {
-			toast.error("ファイルの削除に失敗しました", {
+			toast.error(tRef.current("toast.fileDeleteError"), {
 				description: String(e),
 			});
 		}
@@ -50,7 +52,7 @@ export function useDownloadedFiles() {
 		try {
 			await invoke("open_file", { path });
 		} catch (e) {
-			toast.error("ファイルを開けませんでした", {
+			toast.error(tRef.current("toast.fileOpenError"), {
 				description: String(e),
 			});
 		}
@@ -60,7 +62,7 @@ export function useDownloadedFiles() {
 		try {
 			await invoke("open_file_in_folder", { path });
 		} catch (e) {
-			toast.error("フォルダを開けませんでした", {
+			toast.error(tRef.current("toast.folderOpenError"), {
 				description: String(e),
 			});
 		}

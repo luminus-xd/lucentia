@@ -60,13 +60,14 @@ async function sendAppNotification(
 /** ダウンロード完了時にOS通知を送信する */
 export function notifyDownloadComplete(
 	settings: AppSettings | undefined,
+	notificationTitle: string,
 	title: string | undefined,
 	outputPath: string,
 ): Promise<void> {
 	return sendAppNotification(
 		settings,
 		"notifComplete",
-		"ダウンロード完了",
+		notificationTitle,
 		title || outputPath,
 		"success",
 	);
@@ -75,12 +76,13 @@ export function notifyDownloadComplete(
 /** ダウンロードエラー時にOS通知を送信する */
 export function notifyDownloadError(
 	settings: AppSettings | undefined,
+	notificationTitle: string,
 	errorMessage: string,
 ): Promise<void> {
 	return sendAppNotification(
 		settings,
 		"notifError",
-		"ダウンロードエラー",
+		notificationTitle,
 		errorMessage,
 		"error",
 	);

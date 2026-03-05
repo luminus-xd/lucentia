@@ -2,6 +2,7 @@
 
 import { Trash2 } from "lucide-react";
 import { useHistory, formatBytes } from "@/lib/hooks/useHistory";
+import { useTranslation } from "@/lib/i18n";
 
 /**
  * ISO 8601のタイムスタンプをローカル時刻の "HH:MM" 形式にフォーマットする
@@ -13,17 +14,18 @@ function formatTime(timestamp: string): string {
 
 export default function HistoryPage() {
 	const { history, stats, loading, clearHistory } = useHistory();
+	const { t } = useTranslation();
 
 	const statsCards = [
-		{ label: "TODAY", value: String(stats.todayCount), desc: "downloads", size: formatBytes(stats.todaySize) },
-		{ label: "THIS WEEK", value: String(stats.weekCount), desc: "downloads", size: formatBytes(stats.weekSize) },
-		{ label: "THIS MONTH", value: String(stats.monthCount), desc: "downloads", size: formatBytes(stats.monthSize) },
+		{ label: t("history.today"), value: String(stats.todayCount), desc: t("history.downloads"), size: formatBytes(stats.todaySize) },
+		{ label: t("history.thisWeek"), value: String(stats.weekCount), desc: t("history.downloads"), size: formatBytes(stats.weekSize) },
+		{ label: t("history.thisMonth"), value: String(stats.monthCount), desc: t("history.downloads"), size: formatBytes(stats.monthSize) },
 	];
 
 	if (loading) {
 		return (
 			<div className="flex h-full items-center justify-center">
-				<p className="text-[13px] text-[#64748B]">Loading history...</p>
+				<p className="text-[13px] text-[#64748B]">{t("history.loading")}</p>
 			</div>
 		);
 	}
@@ -33,9 +35,9 @@ export default function HistoryPage() {
 			{/* Header Row */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-2xl font-semibold leading-tight">History</h1>
+					<h1 className="text-2xl font-semibold leading-tight">{t("history.title")}</h1>
 					<p className="text-[13px] text-[#64748B]">
-						Download activity and timeline
+						{t("history.description")}
 					</p>
 				</div>
 				<button
@@ -44,7 +46,7 @@ export default function HistoryPage() {
 					className="flex items-center gap-2 rounded-lg bg-[#1E293B] px-4 py-2.5 text-[13px] font-medium text-[#94A3B8] transition-colors hover:bg-[#1E293B]/80"
 				>
 					<Trash2 className="size-4" />
-					Clear History
+					{t("history.clearHistory")}
 				</button>
 			</div>
 
@@ -76,7 +78,7 @@ export default function HistoryPage() {
 				{history.length === 0 ? (
 					<div className="flex flex-1 items-center justify-center">
 						<p className="text-[13px] text-[#64748B]">
-							No download history yet
+							{t("history.empty")}
 						</p>
 					</div>
 				) : (
