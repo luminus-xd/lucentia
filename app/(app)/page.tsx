@@ -7,6 +7,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { useHistory, formatBytes } from "@/lib/hooks/useHistory";
 import { useVideoDownloader } from "@/lib/hooks/useVideoDownloader";
 import {
 	ArrowDownToLine,
@@ -44,36 +45,7 @@ export default function DashboardPage() {
 		handleDownload,
 	} = useVideoDownloader();
 
-	const stats = [
-		{
-			label: "TOTAL DOWNLOADS",
-			value: "1,247",
-			sub: "+12% this month",
-			subColor: "text-cyan",
-			icon: <TrendingUp className="size-4 text-cyan" />,
-		},
-		{
-			label: "STORAGE USED",
-			value: "24.8 GB",
-			sub: "of 100 GB",
-			subColor: "text-[#64748B]",
-			icon: <HardDrive className="size-4 text-[#64748B]" />,
-		},
-		{
-			label: "ACTIVE QUEUE",
-			value: downloading ? "3" : "3",
-			sub: "processing now",
-			subColor: "text-cyan",
-			icon: <ListOrdered className="size-4 text-cyan" />,
-		},
-		{
-			label: "SUCCESS RATE",
-			value: "98.4%",
-			sub: "last 30 days",
-			subColor: "text-[#64748B]",
-			icon: <Trophy className="size-4 text-[#64748B]" />,
-		},
-	];
+	const { stats: dlStats } = useHistory();
 
 	const queueItems: QueueItem[] = [];
 
@@ -121,6 +93,37 @@ export default function DashboardPage() {
 	];
 
 	const displayQueue = metadata ? queueItems : mockQueue;
+
+	const stats = [
+		{
+			label: "TOTAL DOWNLOADS",
+			value: dlStats.monthCount.toLocaleString(),
+			sub: `+${dlStats.todayCount} today`,
+			subColor: "text-cyan",
+			icon: <TrendingUp className="size-4 text-cyan" />,
+		},
+		{
+			label: "STORAGE USED",
+			value: formatBytes(dlStats.monthSize),
+			sub: "this month",
+			subColor: "text-[#64748B]",
+			icon: <HardDrive className="size-4 text-[#64748B]" />,
+		},
+		{
+			label: "ACTIVE QUEUE",
+			value: String(displayQueue.length),
+			sub: "processing now",
+			subColor: "text-cyan",
+			icon: <ListOrdered className="size-4 text-cyan" />,
+		},
+		{
+			label: "SUCCESS RATE",
+			value: "98.4%",
+			sub: "last 30 days",
+			subColor: "text-[#64748B]",
+			icon: <Trophy className="size-4 text-[#64748B]" />,
+		},
+	];
 
 	const formatLabel = (() => {
 		switch (preferredFormat) {
