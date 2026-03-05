@@ -1,17 +1,23 @@
 use regex::Regex;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
+
+static URL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+  Regex::new(r"^(https?://)(www\.)?([a-zA-Z0-9][-a-zA-Z0-9]*\.)+[a-zA-Z0-9]+(/[-a-zA-Z0-9%_.~#+]*)*(\?[;&a-zA-Z0-9%_.~+=-]*)?").unwrap()
+});
+
+static INVALID_CHARS_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+  Regex::new(r#"[<>:"/\\|?*]"#).unwrap()
+});
 
 /// URLが有効かどうかを確認する関数
 pub fn is_valid_url(url: &str) -> bool {
-  let url_regex = Regex::new(r"^(https?://)(www\.)?([a-zA-Z0-9][-a-zA-Z0-9]*\.)+[a-zA-Z0-9]+(/[-a-zA-Z0-9%_.~#+]*)*(\?[;&a-zA-Z0-9%_.~+=-]*)?").unwrap();
-  url_regex.is_match(url)
+  URL_REGEX.is_match(url)
 }
 
 /// ファイル名を安全にする関数
 pub fn sanitize_filename(input: &str) -> String {
-  // ファイルシステムで問題となる可能性のある文字を置換
-  let invalid_chars = regex::Regex::new(r#"[<>:"/\\|?*]"#).unwrap();
-  let sanitized = invalid_chars.replace_all(input, "_").to_string();
+  let sanitized = INVALID_CHARS_REGEX.replace_all(input, "_").to_string();
 
   // 最大長を制限（ファイルシステムによって異なる可能性があるが、
   // 一般的に安全な値として128文字を使用）

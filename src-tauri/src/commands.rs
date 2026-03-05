@@ -1,12 +1,20 @@
-use regex;
+use regex::Regex;
 use serde::Serialize;
 use serde_json;
 use std::path::Path;
+use std::sync::LazyLock;
 use uuid::Uuid;
 use youtube_dl::YoutubeDl;
 
 use crate::downloader::get_yt_dlp_path;
 use crate::utils::{get_default_download_path, is_safe_path, is_valid_url, sanitize_filename};
+
+static RE_AMP_TIMESTAMP: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"&t=\d+\.?\d*").unwrap());
+static RE_FIRST_TIMESTAMP: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"\?t=\d+\.?\d*&").unwrap());
+static RE_ONLY_TIMESTAMP: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"\?t=\d+\.?\d*$").unwrap());
 
 #[derive(Serialize)]
 pub struct VideoMetadata {
@@ -24,34 +32,27 @@ pub struct VideoFormat {
 
 #[tauri::command]
 pub async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
-  println!("Downloading metadata: {}", url);
+  log::info!("Downloading metadata: {}", url);
 
-  // URL検証
   if !is_valid_url(&url) {
     return Err("有効なURLではありません".to_string());
   }
 
-  // URLからタイムスタンプパラメータ(t=XX)を削除
   let cleaned_url = clean_timestamp_param(&url);
-
-  // yt-dlpバイナリのパスを取得
   let yt_dlp_path = get_yt_dlp_path().await?;
 
   let mut instance = YoutubeDl::new(cleaned_url);
-
-  // カスタムパスのyt-dlpバイナリを使用
   instance.youtube_dl_path(&yt_dlp_path);
 
-  // 基本的なオプション設定
   let result = instance
     .socket_timeout("15")
     .flat_playlist(true)
-    .extra_arg("--no-check-certificate") // 証明書チェックをスキップ
-    .extra_arg("--force-ipv4") // IPv4を強制
+    .extra_arg("--no-check-certificate")
+    .extra_arg("--force-ipv4")
     .run_async()
     .await;
 
-  println!("Downloaded metadata");
+  log::info!("Downloaded metadata");
 
   match result {
     Ok(metadata) => {
@@ -61,7 +62,7 @@ pub async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
           .and_then(|thumbs| thumbs.first().cloned())
           .and_then(|thumb| thumb.url);
 
-        println!("プレイリストサムネイル: {:?}", thumbnail);
+        log::info!("プレイリストサムネイル: {:?}", thumbnail);
 
         Ok(VideoMetadata {
           title: playlist.title.unwrap_or_else(|| "No Title".to_string()),
@@ -76,58 +77,11 @@ pub async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
             .and_then(|thumb| thumb.url)
         });
 
-        println!("ビデオサムネイル: {:?}", thumbnail);
+        log::info!("ビデオサムネイル: {:?}", thumbnail);
 
-        // durationを安全に変換
-        let duration = video.duration.and_then(|d| {
-          println!("元のduration値: {:?}", d);
+        let duration = video.duration.and_then(|d| format_duration(&d));
 
-          if let Some(seconds) = d.as_u64() {
-            println!("整数値として処理: {}", seconds);
-            Some(format!("{:02}:{:02}", seconds / 60, seconds % 60))
-          } else if let Some(seconds) = d.as_f64() {
-            println!("浮動小数点値として処理: {}", seconds);
-            let seconds = seconds as u64;
-            Some(format!("{:02}:{:02}", seconds / 60, seconds % 60))
-          } else if let Some(s) = d.as_str() {
-            println!("文字列として処理: {}", s);
-            s.parse::<u64>()
-              .ok()
-              .map(|seconds| format!("{:02}:{:02}", seconds / 60, seconds % 60))
-          } else {
-            // JSONの値を直接文字列に変換して処理する
-            match serde_json::to_string(&d) {
-              Ok(json_str) => {
-                println!("JSON文字列として処理: {}", json_str);
-                // 浮動小数点数を文字列として扱い、整数部分のみを取り出す
-                let cleaned = if json_str.contains('.') {
-                  json_str.split('.').next().unwrap_or("0").trim_matches('"')
-                } else {
-                  json_str.trim_matches('"')
-                };
-
-                println!("クリーニング後: {}", cleaned);
-
-                match cleaned.parse::<u64>() {
-                  Ok(seconds) => {
-                    println!("変換後の秒数: {}", seconds);
-                    Some(format!("{:02}:{:02}", seconds / 60, seconds % 60))
-                  }
-                  Err(e) => {
-                    println!("変換エラー: {:?}", e);
-                    None
-                  }
-                }
-              }
-              Err(e) => {
-                println!("JSON変換エラー: {:?}", e);
-                None
-              }
-            }
-          }
-        });
-
-        println!("最終的なduration値: {:?}", duration);
+        log::info!("最終的なduration値: {:?}", duration);
 
         Ok(VideoMetadata {
           title: video.title.unwrap_or_else(|| "No Title".to_string()),
@@ -142,6 +96,28 @@ pub async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
   }
 }
 
+/// serde_json::Value から duration を "MM:SS" 形式にフォーマットする
+fn format_duration(d: &serde_json::Value) -> Option<String> {
+  let seconds = if let Some(s) = d.as_u64() {
+    Some(s)
+  } else if let Some(f) = d.as_f64() {
+    Some(f as u64)
+  } else if let Some(s) = d.as_str() {
+    s.parse::<u64>().ok()
+  } else {
+    serde_json::to_string(d).ok().and_then(|json_str| {
+      let cleaned = if json_str.contains('.') {
+        json_str.split('.').next().unwrap_or("0").trim_matches('"')
+      } else {
+        json_str.trim_matches('"')
+      };
+      cleaned.parse::<u64>().ok()
+    })
+  };
+
+  seconds.map(|s| format!("{:02}:{:02}", s / 60, s % 60))
+}
+
 #[tauri::command]
 pub async fn download_video(
   url: String,
@@ -152,31 +128,19 @@ pub async fn download_video(
   preferred_format: Option<String>,
   custom_filename: Option<String>,
 ) -> Result<(), String> {
-  println!("Downloading video: {}", url);
+  log::info!("Downloading video: {}", url);
 
-  // URL検証
   if !is_valid_url(&url) {
     return Err("有効なURLではありません".to_string());
   }
 
-  // URLからタイムスタンプパラメータ(t=XX)を削除
   let cleaned_url = clean_timestamp_param(&url);
-
-  // yt-dlpバイナリのパスを取得
   let yt_dlp_path = get_yt_dlp_path().await?;
 
   // ファイル名の生成 (カスタムかタイトル自動取得)
-  let filename_base = if let Some(filename) = custom_filename {
-    if filename.trim().is_empty() {
-      // 空文字列ならメタデータからタイトルを取得
-      get_video_title(&cleaned_url, &yt_dlp_path.to_string_lossy()).await?
-    } else {
-      // カスタムファイル名を使用
-      sanitize_filename(&filename)
-    }
-  } else {
-    // カスタムファイル名が指定されていない場合はメタデータからタイトルを取得
-    get_video_title(&cleaned_url, &yt_dlp_path.to_string_lossy()).await?
+  let filename_base = match custom_filename {
+    Some(filename) if !filename.trim().is_empty() => sanitize_filename(&filename),
+    _ => get_video_title(&cleaned_url, &yt_dlp_path.to_string_lossy()).await?,
   };
 
   // 出力ファイル名生成（audio_only によって拡張子が変わる）
@@ -194,14 +158,12 @@ pub async fn download_video(
     if p.trim().is_empty() {
       get_default_download_path(&output_filename)?
     } else {
-      // 提供されたフォルダパスを検証
       let path = Path::new(&p);
       if !path.exists() || !path.is_dir() {
         return Err("指定されたパスが存在しないか、ディレクトリではありません".to_string());
       }
 
       let full_path = path.join(&output_filename);
-      // 安全なパスかどうかを確認
       if !is_safe_path(&full_path) {
         return Err("安全でないパスが指定されました".to_string());
       }
@@ -235,44 +197,38 @@ pub async fn download_video(
     );
 
     let new_path = dir.join(new_filename);
-    println!("ファイル名の重複を回避: {}", new_path.to_string_lossy());
+    log::info!("ファイル名の重複を回避: {}", new_path.to_string_lossy());
 
     new_path.to_string_lossy().to_string()
   } else {
     base_output_path
   };
 
-  println!("Output file: {}", output_path);
+  log::info!("Output file: {}", output_path);
 
   let mut instance = YoutubeDl::new(cleaned_url);
-  // カスタムパスのyt-dlpバイナリを使用
   instance.youtube_dl_path(&yt_dlp_path);
 
-  // 基本的なオプション設定
   instance
     .socket_timeout("15")
-    .extra_arg("--no-check-certificate") // 証明書チェックをスキップ
-    .extra_arg("--verbose"); // 詳細なログを出力
+    .extra_arg("--no-check-certificate")
+    .extra_arg("--verbose");
 
   // Windows環境では単純なパス処理
   #[cfg(windows)]
   {
-    // パスに問題があれば、シンプルな名前に変更
     let simple_path = if output_path.contains(" ") {
-      // ファイル名を単純化
       let dir = Path::new(&output_path).parent().unwrap_or(Path::new(""));
       let ext = Path::new(&output_path)
         .extension()
         .unwrap_or_else(|| std::ffi::OsStr::new("mp4"));
 
-      // タイトルの先頭部分を抽出（スペースなし）
       let filename_base = Path::new(&output_path)
         .file_stem()
         .unwrap_or_else(|| std::ffi::OsStr::new("video"))
         .to_string_lossy()
         .to_string();
 
-      // スペースを削除し、最初の20文字だけを使用
       let clean_name = filename_base
         .chars()
         .filter(|c| !c.is_whitespace())
@@ -280,7 +236,7 @@ pub async fn download_video(
         .collect::<String>();
 
       let new_path = dir.join(format!("{}.{}", clean_name, ext.to_string_lossy()));
-      println!(
+      log::info!(
         "パス名を単純化: {} -> {}",
         output_path,
         new_path.to_string_lossy()
@@ -290,10 +246,7 @@ pub async fn download_video(
       output_path.clone()
     };
 
-    // 出力パスを更新
     output_path = simple_path;
-
-    // Windows環境でのファイル名処理を追加
     instance.extra_arg("--windows-filenames");
   }
 
@@ -303,85 +256,69 @@ pub async fn download_video(
       .extra_arg("--audio-format")
       .extra_arg("mp3")
       .extra_arg("--audio-quality")
-      .extra_arg("0"); // 最高音質
+      .extra_arg("0");
 
-    // Windows環境（シンプルな設定）
     #[cfg(windows)]
     {
-      // Windows環境では特定のオプションを設定
       instance
-        .format("best") // 単一フォーマットを選択
-        .extra_arg("--no-mtime") // ファイル更新日時を設定しない
-        .extra_arg("--no-part") // 部分的なファイルを作成しない
-        .extra_arg("--windows-filenames"); // Windowsファイル名の制限に対応
+        .format("best")
+        .extra_arg("--no-mtime")
+        .extra_arg("--no-part")
+        .extra_arg("--windows-filenames");
     }
   } else {
-    // フォーマット設定（シンプルに保つ）
-    let _format = match &preferred_format {
+    let format = match &preferred_format {
       Some(fmt) => fmt.as_str(),
       None => "mp4",
     };
 
-    // 環境に応じた設定
     #[cfg(not(windows))]
     {
       if best_quality {
         instance
-          .format("bestvideo+bestaudio/best") // 最高品質のビデオ+音声
+          .format("bestvideo+bestaudio/best")
           .extra_arg("--merge-output-format")
-          .extra_arg(_format);
+          .extra_arg(format);
       } else {
         instance
-          .format("best") // デフォルトの高品質
+          .format("best")
           .extra_arg("--merge-output-format")
-          .extra_arg(_format);
+          .extra_arg(format);
       }
     }
 
-    // Windows環境では単一ストリームを使用
     #[cfg(windows)]
     {
       instance.format("best");
-    }
-
-    // Windows環境向けのシンプルな設定
-    #[cfg(windows)]
-    {
       instance.extra_arg("--prefer-ffmpeg");
     }
   }
 
-  // 字幕のダウンロード設定
   if download_subtitles {
     instance
-      .extra_arg("--write-sub") // 字幕をダウンロード
-      .extra_arg("--write-auto-sub") // 自動生成字幕もダウンロード
+      .extra_arg("--write-sub")
+      .extra_arg("--write-auto-sub")
       .extra_arg("--sub-format")
       .extra_arg("srt")
-      .extra_arg("--embed-subs") // 字幕を動画に埋め込む
+      .extra_arg("--embed-subs")
       .extra_arg("--sub-lang")
-      .extra_arg("ja,en"); // 日本語と英語の字幕を優先
+      .extra_arg("ja,en");
   }
 
-  // 出力ファイルのパス指定
   instance.extra_arg("-o").extra_arg(&output_path);
 
-  println!("Starting download...");
-
-  // yt-dlpコマンドのデバッグ出力
-  let debug_cmd = format!(
-    "{} --verbose \"{}\" -o \"{}\"",
+  log::info!("Starting download...");
+  log::debug!(
+    "実行コマンド（参考）: {} --verbose \"{}\" -o \"{}\"",
     yt_dlp_path.to_string_lossy(),
     &url,
     output_path
   );
-  println!("実行コマンド（参考）: {}", debug_cmd);
 
   // Windows環境では直接実行を試みる
   #[cfg(windows)]
   {
-    // 標準のyt-dlpコマンドを直接実行
-    println!("Windows環境では直接コマンド実行を優先します...");
+    log::info!("Windows環境では直接コマンド実行を優先します...");
     let mut cmd = std::process::Command::new(&yt_dlp_path);
     cmd.args(&[
       "--verbose",
@@ -408,54 +345,49 @@ pub async fn download_video(
     match output {
       Ok(output) => {
         if output.status.success() {
-          println!("コマンド実行が成功しました");
+          log::info!("コマンド実行が成功しました");
 
-          // ファイルの確認
           if Path::new(&output_path).exists() {
-            println!("ファイルが正常に作成されました: {}", output_path);
             let metadata = std::fs::metadata(&output_path)
               .map_or_else(|_| "不明".to_string(), |m| format!("{} bytes", m.len()));
-            println!("ファイルサイズ: {}", metadata);
+            log::info!("ファイルが正常に作成されました: {} ({})", output_path, metadata);
             return Ok(());
           } else {
-            println!("警告: コマンドは成功しましたが、ファイルが存在しません");
+            log::warn!("コマンドは成功しましたが、ファイルが存在しません");
           }
         } else {
-          eprintln!(
+          log::error!(
             "コマンド実行エラー: {}",
             String::from_utf8_lossy(&output.stderr)
           );
         }
       }
       Err(e) => {
-        eprintln!("コマンド実行の開始に失敗: {}", e);
+        log::error!("コマンド実行の開始に失敗: {}", e);
       }
     }
 
-    // 直接実行が失敗した場合はライブラリによる実行を試みる
-    println!("直接実行が失敗したため、ライブラリによる実行を試みます...");
+    log::info!("直接実行が失敗したため、ライブラリによる実行を試みます...");
   }
 
   let result = instance.socket_timeout("15").download_to_async("").await;
 
   match result {
     Ok(_) => {
-      println!("Downloaded video successfully.");
+      log::info!("Downloaded video successfully.");
 
-      // ファイルが存在するか確認
       if Path::new(&output_path).exists() {
         let metadata = match std::fs::metadata(&output_path) {
           Ok(meta) => format!("{} bytes", meta.len()),
           Err(_) => "不明".to_string(),
         };
-        println!("出力ファイル: {} (サイズ: {})", output_path, metadata);
+        log::info!("出力ファイル: {} (サイズ: {})", output_path, metadata);
         Ok(())
       } else {
-        // Windows環境では最後の手段として直接yt-dlpコマンドを実行
         #[cfg(windows)]
         {
-          println!("警告: 出力ファイルが存在しません: {}", output_path);
-          println!("最終手段: 基本的なyt-dlpコマンドを実行します...");
+          log::warn!("出力ファイルが存在しません: {}", output_path);
+          log::info!("最終手段: 基本的なyt-dlpコマンドを実行します...");
 
           let status = std::process::Command::new(&yt_dlp_path)
             .args(&[&url, "-o", &output_path])
@@ -463,9 +395,8 @@ pub async fn download_video(
 
           match status {
             Ok(exit) if exit.success() => {
-              println!("基本コマンドが成功しました");
               if Path::new(&output_path).exists() {
-                println!("ファイルが作成されました！");
+                log::info!("ファイルが作成されました！");
                 return Ok(());
               }
             }
@@ -477,13 +408,13 @@ pub async fn download_video(
 
         #[cfg(not(windows))]
         {
-          println!("警告: 出力ファイルが存在しません: {}", output_path);
+          log::warn!("出力ファイルが存在しません: {}", output_path);
           Err("ファイルのダウンロードに失敗しました".to_string())
         }
       }
     }
     Err(e) => {
-      eprintln!("ダウンロードエラー: {}", e);
+      log::error!("ダウンロードエラー: {}", e);
       Err(format!("Error downloading video: {}", e))
     }
   }
@@ -495,51 +426,39 @@ fn clean_timestamp_param(url: &str) -> String {
     return url.to_string();
   }
 
-  // &t=XXを削除（中間または末尾のパラメータ）
-  let re_amp = regex::Regex::new(r"&t=\d+\.?\d*").unwrap();
-  let cleaned = re_amp.replace_all(url, "").to_string();
-
-  // ?t=XXを削除（最初のパラメータの場合）
-  // ?t=XX&... → ?... に変換
-  let re_first = regex::Regex::new(r"\?t=\d+\.?\d*&").unwrap();
-  let cleaned = re_first.replace_all(&cleaned, "?").to_string();
-
-  // ?t=XXが唯一のパラメータの場合 → クエリストリング全体を削除
-  let re_only = regex::Regex::new(r"\?t=\d+\.?\d*$").unwrap();
-  let cleaned = re_only.replace_all(&cleaned, "").to_string();
+  let cleaned = RE_AMP_TIMESTAMP.replace_all(url, "").to_string();
+  let cleaned = RE_FIRST_TIMESTAMP.replace_all(&cleaned, "?").to_string();
+  let cleaned = RE_ONLY_TIMESTAMP.replace_all(&cleaned, "").to_string();
 
   if cleaned != url {
-    println!("タイムスタンプを削除したURL: {}", cleaned);
+    log::info!("タイムスタンプを削除したURL: {}", cleaned);
   }
 
   cleaned
 }
 
-// タイトルを取得する補助関数
+/// タイトルを取得する補助関数
 async fn get_video_title(url: &str, yt_dlp_path: &str) -> Result<String, String> {
-  // メタデータからタイトルを取得
   let mut meta_instance = YoutubeDl::new(url.to_string());
-  // カスタムパスのyt-dlpバイナリを使用
   meta_instance.youtube_dl_path(yt_dlp_path);
 
-  // 基本的なオプション設定
   meta_instance
     .socket_timeout("15")
     .flat_playlist(true)
-    .extra_arg("--no-check-certificate") // 証明書チェックをスキップ
-    .extra_arg("--force-ipv4"); // IPv4を強制
+    .extra_arg("--no-check-certificate")
+    .extra_arg("--force-ipv4");
 
   let metadata_result = meta_instance.run_async().await;
 
   match metadata_result {
     Ok(metadata) => {
       if let Some(playlist) = metadata.clone().into_playlist() {
-        println!("プレイリストのタイトル: {:?}", playlist.title);
+        log::info!("プレイリストのタイトル: {:?}", playlist.title);
         Ok(sanitize_filename(
           &playlist.title.unwrap_or_else(|| "No Title".to_string()),
         ))
       } else if let Some(video) = metadata.into_single_video() {
-        println!("ビデオのタイトル: {:?}", video.title);
+        log::info!("ビデオのタイトル: {:?}", video.title);
         Ok(sanitize_filename(
           &video.title.unwrap_or_else(|| "No Title".to_string()),
         ))
@@ -548,7 +467,7 @@ async fn get_video_title(url: &str, yt_dlp_path: &str) -> Result<String, String>
       }
     }
     Err(e) => {
-      eprintln!("メタデータ取得エラー: {:?}", e);
+      log::error!("メタデータ取得エラー: {:?}", e);
       Err(format!("動画情報の取得に失敗しました: {}", e))
     }
   }
