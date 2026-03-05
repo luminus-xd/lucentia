@@ -1,5 +1,6 @@
 "use client";
 
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useState } from "react";
@@ -97,15 +98,15 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function SettingsPage() {
-	const { settings, pathStatus, loading, saveSettings, updateField, changeSavePath } = useSettings();
+	const { settings, pathStatus, loading, saveSettings, updateField, changeSavePath, resetSettings } = useSettings();
+	const [appVersion, setAppVersion] = useState<string>("...");
 	const [ytDlpVersion, setYtDlpVersion] = useState<string>("...");
 	const [updating, setUpdating] = useState(false);
 	const [changingPath, setChangingPath] = useState(false);
 
 	useEffect(() => {
-		invoke<string>("get_yt_dlp_version")
-			.then(setYtDlpVersion)
-			.catch(() => setYtDlpVersion("not found"));
+		getVersion().then((v) => setAppVersion(`v${v}`)).catch(() => setAppVersion("unknown"));
+		invoke<string>("get_yt_dlp_version").then(setYtDlpVersion).catch(() => setYtDlpVersion("not found"));
 	}, []);
 
 	const handleSave = async () => {
@@ -128,6 +129,24 @@ export default function SettingsPage() {
 			setChangingPath(false);
 		}
 	}, [changeSavePath]);
+
+	const handleClearCache = useCallback(async () => {
+		try {
+			await invoke("clear_cache");
+			toast.success("キャッシュを削除しました");
+		} catch (e) {
+			toast.error(`キャッシュの削除に失敗: ${e}`);
+		}
+	}, []);
+
+	const handleResetSettings = useCallback(async () => {
+		try {
+			await resetSettings();
+			toast.success("設定をリセットしました");
+		} catch (e) {
+			toast.error(`設定のリセットに失敗: ${e}`);
+		}
+	}, [resetSettings]);
 
 	const handleUpdateYtDlp = useCallback(async () => {
 		setUpdating(true);
@@ -350,7 +369,7 @@ export default function SettingsPage() {
 					<div className="bg-card rounded-xl p-6 flex flex-col gap-5">
 						<SectionHeader icon={Info} label="About" />
 
-						<InfoRow label="App Version" value="v2.0.0" />
+						<InfoRow label="App Version" value={appVersion} />
 						<InfoRow label="yt-dlp Version" value={ytDlpVersion} />
 						<InfoRow label="Runtime" value="Tauri 2" />
 
@@ -379,11 +398,12 @@ export default function SettingsPage() {
 							<div className="flex flex-col gap-0.5">
 								<span className="text-sm font-medium">Clear Cache</span>
 								<span className="text-xs text-muted-foreground">
-									Remove all cached thumbnails and metadata
+									Remove yt-dlp cache data
 								</span>
 							</div>
 							<button
 								type="button"
+								onClick={handleClearCache}
 								className="px-3 h-8 bg-[#0F172A] border border-[#475569] rounded-md text-sm hover:bg-[#0F172A]/80 transition-colors"
 							>
 								Clear
@@ -399,6 +419,7 @@ export default function SettingsPage() {
 							</div>
 							<button
 								type="button"
+								onClick={handleResetSettings}
 								className="px-3 h-8 bg-[#0F172A] border border-[#475569] rounded-md text-sm hover:bg-[#0F172A]/80 transition-colors"
 							>
 								Reset

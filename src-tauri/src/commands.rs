@@ -601,6 +601,44 @@ pub fn save_settings(new_settings: AppSettings) -> Result<(), String> {
   settings::save_settings(&new_settings)
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetSettingsResult {
+  pub settings: AppSettings,
+  pub path_status: settings::SavePathStatus,
+}
+
+#[tauri::command]
+pub fn reset_settings() -> Result<ResetSettingsResult, String> {
+  let mut defaults = AppSettings::default();
+  defaults.initialized = true;
+  settings::save_settings(&defaults)?;
+  let path_status = settings::validate_save_path(&defaults.save_path);
+  Ok(ResetSettingsResult {
+    settings: defaults,
+    path_status,
+  })
+}
+
+#[tauri::command]
+pub fn clear_cache() -> Result<(), String> {
+  let app_data = crate::utils::ensure_app_data_dir()?;
+
+  // yt-dlp のキャッシュディレクトリを削除
+  let cache_dirs = ["cache", "__pycache__"];
+  for name in &cache_dirs {
+    let dir = app_data.join(name);
+    match std::fs::remove_dir_all(&dir) {
+      Ok(()) => log::info!("キャッシュを削除しました: {}", dir.display()),
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+      Err(e) => return Err(format!("キャッシュの削除に失敗: {e}")),
+    }
+  }
+
+  Ok(())
+}
+
+
 // ─── 履歴コマンド ─────────────────────────────────
 
 #[tauri::command]

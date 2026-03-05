@@ -69,5 +69,11 @@ export function useSettings() {
 		setPathStatus(status);
 	}, []);
 
-	return { settings, pathStatus, loading, saveSettings, updateField, changeSavePath };
+	const resetSettings = useCallback(async () => {
+		const result = await invoke<{ settings: AppSettings; pathStatus: SavePathStatus }>("reset_settings");
+		setSettings(result.settings);
+		setPathStatus(result.pathStatus);
+	}, []);
+
+	return { settings, pathStatus, loading, saveSettings, updateField, changeSavePath, resetSettings };
 }
