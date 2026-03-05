@@ -24,6 +24,7 @@ export const FileTableRow = memo(function FileTableRow({
 }) {
 	const { t } = useTranslation();
 	const [menuOpen, setMenuOpen] = useState(false);
+	const [imgError, setImgError] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
 	useClickOutside(menuRef, () => setMenuOpen(false));
 
@@ -39,7 +40,16 @@ export const FileTableRow = memo(function FileTableRow({
 			</div>
 
 			<div className="flex-1 flex items-center gap-3 min-w-0">
-				<div className="w-16 h-10 rounded-md bg-background/60 flex-shrink-0" />
+				{file.thumbnail && !imgError ? (
+					<img
+						src={file.thumbnail}
+						alt={file.title}
+						className="w-16 h-10 rounded-md object-cover flex-shrink-0"
+						onError={() => setImgError(true)}
+					/>
+				) : (
+					<div className="w-16 h-10 rounded-md bg-background/60 flex-shrink-0" />
+				)}
 				<div className="min-w-0">
 					<p className="text-sm font-medium truncate">{file.title}</p>
 					<p className="text-[11px] font-mono text-muted-foreground truncate">

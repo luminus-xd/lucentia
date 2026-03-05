@@ -207,6 +207,8 @@ export function useVideoDownloader(
 				downloadSubtitles: !audioOnly && downloadSubtitles,
 				preferredFormat: !audioOnly ? preferredFormat : null,
 				customFilename: customFilename.trim() || null,
+				thumbnail: metadataRef.current?.thumbnail ?? null,
+				metadataTitle: metadataRef.current?.title ?? null,
 			});
 			setProgress({ percent: 100, speed: null, eta: null });
 			setStatusType("success");

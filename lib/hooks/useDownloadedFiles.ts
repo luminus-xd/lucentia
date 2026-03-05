@@ -9,6 +9,7 @@ import { useStableT } from "../i18n";
 export interface DownloadedFile {
 	id: string;
 	title: string;
+	thumbnail?: string;
 	filename: string;
 	path: string;
 	format: string;

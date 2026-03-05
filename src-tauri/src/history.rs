@@ -12,6 +12,8 @@ pub struct HistoryEntry {
   pub id: String,
   pub url: String,
   pub title: String,
+  pub thumbnail: Option<String>,
+  pub file_path: Option<String>,
   pub format: String,
   pub size: Option<u64>,
   pub status: HistoryStatus,
@@ -53,8 +55,8 @@ fn history_path() -> Result<PathBuf, String> {
   Ok(ensure_app_data_dir()?.join("history.json"))
 }
 
-/// 履歴を全件読み込む（内部用）
-fn load_all_entries() -> Result<Vec<HistoryEntry>, String> {
+/// 履歴を全件読み込む
+pub fn load_all_entries() -> Result<Vec<HistoryEntry>, String> {
   let path = history_path()?;
 
   if !path.exists() {

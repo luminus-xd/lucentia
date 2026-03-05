@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use regex::Regex;
 use serde::Serialize;
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::LazyLock;
 use tauri::Emitter;
@@ -35,6 +36,25 @@ pub struct VideoMetadata {
   pub title: String,
   pub thumbnail: Option<String>,
   pub duration: Option<String>,
+}
+
+/// yt-dlp メタデータ出力からサムネイルURLを抽出する
+fn extract_thumbnail(output: &youtube_dl::YoutubeDlOutput) -> Option<String> {
+  if let Some(playlist) = output.clone().into_playlist() {
+    playlist
+      .thumbnails
+      .and_then(|thumbs| thumbs.first().cloned())
+      .and_then(|thumb| thumb.url)
+  } else if let Some(video) = output.clone().into_single_video() {
+    video.thumbnail.or_else(|| {
+      video
+        .thumbnails
+        .and_then(|thumbs| thumbs.first().cloned())
+        .and_then(|thumb| thumb.url)
+    })
+  } else {
+    None
+  }
 }
 
 #[derive(Serialize, Clone)]
@@ -75,32 +95,16 @@ pub async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
 
   match result {
     Ok(metadata) => {
+      let thumbnail = extract_thumbnail(&metadata);
+
       if let Some(playlist) = metadata.clone().into_playlist() {
-        let thumbnail = playlist
-          .thumbnails
-          .and_then(|thumbs| thumbs.first().cloned())
-          .and_then(|thumb| thumb.url);
-
-        log::info!("プレイリストサムネイル: {thumbnail:?}");
-
         Ok(VideoMetadata {
           title: playlist.title.unwrap_or_else(|| "No Title".to_string()),
           thumbnail,
           duration: None,
         })
       } else if let Some(video) = metadata.into_single_video() {
-        let thumbnail = video.thumbnail.or_else(|| {
-          video
-            .thumbnails
-            .and_then(|thumbs| thumbs.first().cloned())
-            .and_then(|thumb| thumb.url)
-        });
-
-        log::info!("ビデオサムネイル: {thumbnail:?}");
-
         let duration = video.duration.and_then(|d| format_duration(&d));
-
-        log::info!("最終的なduration値: {duration:?}");
 
         Ok(VideoMetadata {
           title: video.title.unwrap_or_else(|| "No Title".to_string()),
@@ -153,6 +157,8 @@ pub async fn download_video(
   download_subtitles: bool,
   preferred_format: Option<String>,
   custom_filename: Option<String>,
+  thumbnail: Option<String>,
+  metadata_title: Option<String>,
 ) -> Result<String, String> {
   log::info!("Downloading video: {url}");
 
@@ -163,10 +169,17 @@ pub async fn download_video(
   let cleaned_url = clean_timestamp_param(&url);
   let yt_dlp_path = get_yt_dlp_path().await?;
 
-  // ファイル名の生成 (カスタムかタイトル自動取得)
-  let filename_base = match custom_filename {
-    Some(filename) if !filename.trim().is_empty() => sanitize_filename(&filename),
-    _ => get_video_title(&cleaned_url, &yt_dlp_path.to_string_lossy()).await?,
+  // ファイル名の生成
+  // 優先順: カスタムファイル名 > フロントエンドで取得済みのタイトル > yt-dlpから再取得
+  let (filename_base, thumbnail) = match custom_filename {
+    Some(filename) if !filename.trim().is_empty() => (sanitize_filename(&filename), thumbnail),
+    _ => match metadata_title {
+      Some(title) if !title.trim().is_empty() => (sanitize_filename(&title), thumbnail),
+      _ => {
+        let (title, fetched_thumb) = get_video_info(&cleaned_url, &yt_dlp_path.to_string_lossy()).await?;
+        (title, thumbnail.or(fetched_thumb))
+      }
+    },
   };
 
   // 出力ファイル名生成（audio_only によって拡張子が変わる）
@@ -294,7 +307,7 @@ pub async fn download_video(
   if let Err(e) = run_yt_dlp_with_progress(&app_handle, &yt_dlp_path, &args, best_quality && !audio_only).await {
     let _ = history::add_entry(build_history_entry(
       &url, &filename_base, extension, best_quality,
-      HistoryStatus::Failed, None, Some(e.clone()),
+      HistoryStatus::Failed, None, Some(e.clone()), thumbnail.clone(), None,
     ));
     return Err(e);
   }
@@ -307,7 +320,7 @@ pub async fn download_video(
 
     let _ = history::add_entry(build_history_entry(
       &url, &filename_base, extension, best_quality,
-      HistoryStatus::Success, file_size, None,
+      HistoryStatus::Success, file_size, None, thumbnail, Some(output_path.clone()),
     ));
 
     Ok(output_path)
@@ -316,7 +329,7 @@ pub async fn download_video(
 
     let _ = history::add_entry(build_history_entry(
       &url, &filename_base, extension, best_quality,
-      HistoryStatus::Failed, None, Some("error.file_not_found".to_string()),
+      HistoryStatus::Failed, None, Some("error.file_not_found".to_string()), thumbnail, None,
     ));
 
     Err("error.file_not_found".to_string())
@@ -534,6 +547,8 @@ fn build_history_entry(
   status: HistoryStatus,
   file_size: Option<u64>,
   error_message: Option<String>,
+  thumbnail: Option<String>,
+  file_path: Option<String>,
 ) -> HistoryEntry {
   let format_label = match status {
     HistoryStatus::Success if best_quality => {
@@ -546,6 +561,8 @@ fn build_history_entry(
     id: Uuid::new_v4().to_string(),
     url: url.to_string(),
     title: title.to_string(),
+    thumbnail,
+    file_path,
     format: format_label,
     size: file_size,
     status,
@@ -663,6 +680,7 @@ pub fn clear_history() -> Result<(), String> {
 pub struct DownloadedFile {
   pub id: String,
   pub title: String,
+  pub thumbnail: Option<String>,
   pub filename: String,
   pub path: String,
   pub format: String,
@@ -685,6 +703,16 @@ pub fn list_downloaded_files() -> Result<Vec<DownloadedFile>, String> {
   if !base.is_dir() {
     return Ok(Vec::new());
   }
+
+  // 履歴からファイルパス→サムネイルURLのマップを構築
+  let thumbnail_map: HashMap<String, String> = history::load_all_entries()
+    .unwrap_or_default()
+    .into_iter()
+    .filter_map(|e| match (e.file_path, e.thumbnail) {
+      (Some(path), Some(thumb)) => Some((path, thumb)),
+      _ => None,
+    })
+    .collect();
 
   let mut files: Vec<DownloadedFile> = Vec::new();
 
@@ -752,9 +780,12 @@ pub fn list_downloaded_files() -> Result<Vec<DownloadedFile>, String> {
       let format = ext_lower.to_uppercase();
       let full_path = path.to_string_lossy().to_string();
 
+      let thumbnail = thumbnail_map.get(&full_path).cloned();
+
       files.push(DownloadedFile {
         id: full_path.clone(),
         title,
+        thumbnail,
         filename,
         path: full_path,
         format,
@@ -874,8 +905,8 @@ pub fn open_file(path: String) -> Result<(), String> {
   Ok(())
 }
 
-/// タイトルを取得する補助関数
-async fn get_video_title(url: &str, yt_dlp_path: &str) -> Result<String, String> {
+/// タイトルとサムネイルを取得する補助関数
+async fn get_video_info(url: &str, yt_dlp_path: &str) -> Result<(String, Option<String>), String> {
   let mut meta_instance = YoutubeDl::new(url.to_string());
   meta_instance.youtube_dl_path(yt_dlp_path);
 
@@ -895,15 +926,17 @@ async fn get_video_title(url: &str, yt_dlp_path: &str) -> Result<String, String>
 
   match metadata_result {
     Ok(metadata) => {
+      let thumbnail = extract_thumbnail(&metadata);
+
       if let Some(playlist) = metadata.clone().into_playlist() {
-        log::info!("プレイリストのタイトル: {:?}", playlist.title);
-        Ok(sanitize_filename(
-          &playlist.title.unwrap_or_else(|| "No Title".to_string()),
+        Ok((
+          sanitize_filename(&playlist.title.unwrap_or_else(|| "No Title".to_string())),
+          thumbnail,
         ))
       } else if let Some(video) = metadata.into_single_video() {
-        log::info!("ビデオのタイトル: {:?}", video.title);
-        Ok(sanitize_filename(
-          &video.title.unwrap_or_else(|| "No Title".to_string()),
+        Ok((
+          sanitize_filename(&video.title.unwrap_or_else(|| "No Title".to_string())),
+          thumbnail,
         ))
       } else {
         Err("error.get_title_failed".to_string())
