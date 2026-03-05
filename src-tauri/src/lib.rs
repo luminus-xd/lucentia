@@ -10,7 +10,7 @@ pub mod utils;
 pub fn run() {
   use crate::commands::{
     clear_history, download_metadata, download_video, get_download_stats, get_history,
-    get_settings, save_settings,
+    get_settings, get_yt_dlp_version, save_settings, update_yt_dlp,
   };
 
   tauri::Builder::default()
@@ -23,6 +23,8 @@ pub fn run() {
       get_history,
       get_download_stats,
       clear_history,
+      update_yt_dlp,
+      get_yt_dlp_version,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

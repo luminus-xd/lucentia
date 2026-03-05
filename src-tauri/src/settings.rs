@@ -8,13 +8,11 @@ use crate::utils::{ensure_app_data_dir, get_download_dir};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
-  pub ffmpeg_path: String,
-  pub hw_accel: bool,
-  pub thread_count: u32,
   pub save_path: String,
   pub default_format: String,
   pub default_quality: String,
   pub concurrent_downloads: u32,
+  pub cookies_browser: Option<String>,
   pub notif_complete: bool,
   pub notif_error: bool,
   pub notif_sound: bool,
@@ -27,13 +25,11 @@ impl Default for AppSettings {
       .unwrap_or_else(|_| "~/Downloads".to_string());
 
     Self {
-      ffmpeg_path: detect_ffmpeg_path(),
-      hw_accel: true,
-      thread_count: 4,
       save_path: default_save_path,
       default_format: "mp4".to_string(),
       default_quality: "1080p".to_string(),
       concurrent_downloads: 3,
+      cookies_browser: None,
       notif_complete: true,
       notif_error: true,
       notif_sound: false,
@@ -44,27 +40,6 @@ impl Default for AppSettings {
 /// 設定ファイルのパスを取得する
 fn settings_path() -> Result<PathBuf, String> {
   Ok(ensure_app_data_dir()?.join("settings.json"))
-}
-
-/// ffmpegのパスを自動検出する
-fn detect_ffmpeg_path() -> String {
-  let candidates = if cfg!(windows) {
-    vec!["ffmpeg.exe"]
-  } else {
-    vec![
-      "/opt/homebrew/bin/ffmpeg",
-      "/usr/local/bin/ffmpeg",
-      "/usr/bin/ffmpeg",
-    ]
-  };
-
-  for path in candidates {
-    if std::path::Path::new(path).exists() {
-      return path.to_string();
-    }
-  }
-
-  "ffmpeg".to_string()
 }
 
 /// 設定を読み込む

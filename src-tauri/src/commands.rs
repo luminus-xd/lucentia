@@ -45,17 +45,22 @@ pub async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
 
   let cleaned_url = clean_timestamp_param(&url);
   let yt_dlp_path = get_yt_dlp_path().await?;
+  let app_settings = settings::load_settings().unwrap_or_default();
 
   let mut instance = YoutubeDl::new(cleaned_url);
   instance.youtube_dl_path(&yt_dlp_path);
 
-  let result = instance
+  instance
     .socket_timeout("15")
     .flat_playlist(true)
     .extra_arg("--no-check-certificate")
-    .extra_arg("--force-ipv4")
-    .run_async()
-    .await;
+    .extra_arg("--force-ipv4");
+
+  if let Some(browser) = &app_settings.cookies_browser {
+    instance.extra_arg("--cookies-from-browser").extra_arg(browser);
+  }
+
+  let result = instance.run_async().await;
 
   log::info!("Downloaded metadata");
 
@@ -251,6 +256,8 @@ pub async fn download_video(
 
   log::info!("Output file: {output_path}");
 
+  let app_settings = settings::load_settings().unwrap_or_default();
+
   let args = build_yt_dlp_args(
     &cleaned_url,
     &output_path,
@@ -258,6 +265,7 @@ pub async fn download_video(
     best_quality,
     download_subtitles,
     preferred_format.as_deref(),
+    app_settings.cookies_browser.as_deref(),
   );
 
   log::info!("Starting download...");
@@ -307,6 +315,7 @@ fn build_yt_dlp_args(
   best_quality: bool,
   download_subtitles: bool,
   preferred_format: Option<&str>,
+  cookies_browser: Option<&str>,
 ) -> Vec<String> {
   let format_value = preferred_format.unwrap_or("mp4");
   let mut args: Vec<String> = vec![
@@ -315,6 +324,10 @@ fn build_yt_dlp_args(
     "15".into(),
     "--no-check-certificate".into(),
   ];
+
+  if let Some(browser) = cookies_browser {
+    args.extend(["--cookies-from-browser".into(), browser.to_string()]);
+  }
 
   #[cfg(windows)]
   args.push("--windows-filenames".into());
@@ -517,6 +530,18 @@ fn build_history_entry(
   }
 }
 
+// ─── yt-dlp コマンド ──────────────────────────────
+
+#[tauri::command]
+pub async fn update_yt_dlp() -> Result<String, String> {
+  crate::downloader::update_yt_dlp().await
+}
+
+#[tauri::command]
+pub async fn get_yt_dlp_version() -> Result<String, String> {
+  crate::downloader::get_yt_dlp_version().await
+}
+
 // ─── 設定コマンド ─────────────────────────────────
 
 #[tauri::command]
@@ -556,6 +581,12 @@ async fn get_video_title(url: &str, yt_dlp_path: &str) -> Result<String, String>
     .flat_playlist(true)
     .extra_arg("--no-check-certificate")
     .extra_arg("--force-ipv4");
+
+  if let Ok(s) = settings::load_settings() {
+    if let Some(browser) = &s.cookies_browser {
+      meta_instance.extra_arg("--cookies-from-browser").extra_arg(browser);
+    }
+  }
 
   let metadata_result = meta_instance.run_async().await;
 
