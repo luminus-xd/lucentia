@@ -76,8 +76,12 @@ export function useVideoDownloader(): VideoDownloaderState &
 	// URL入力のラッパー関数（検証を追加）
 	const setUrl = (newUrl: string) => {
 		setUrlRaw(newUrl);
-		if (newUrl && !isValidUrl(newUrl)) {
+		if (!newUrl) {
+			setStatus("");
+		} else if (!isValidUrl(newUrl)) {
 			setStatus("無効なURLです。http://またはhttps://で始まるURLを入力してください。");
+		} else {
+			setStatus("");
 		}
 	};
 
@@ -141,13 +145,13 @@ export function useVideoDownloader(): VideoDownloaderState &
 			const interval = setInterval(() => {
 				setProgress((prev) => {
 					const newProgress = prev + Math.random() * 10;
-					return newProgress >= 100 ? 100 : newProgress;
+					// 90%で止めて、実際の完了を待つ
+					return newProgress >= 90 ? 90 : newProgress;
 				});
 			}, 500);
 
 			return () => {
 				clearInterval(interval);
-				setProgress(0);
 			};
 		}
 	}, [downloading]);
@@ -185,12 +189,12 @@ export function useVideoDownloader(): VideoDownloaderState &
 				preferredFormat: !audioOnly ? preferredFormat : null,
 				customFilename: customFilename.trim() || null,
 			});
+			setProgress(100);
 			setStatus("ダウンロードが完了しました");
 		} catch (error) {
 			setStatus(`ダウンロードエラー: ${error}`);
 		} finally {
 			setDownloading(false);
-			setProgress(100);
 		}
 	};
 

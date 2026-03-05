@@ -32,14 +32,7 @@ pub async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
   }
 
   // URLからタイムスタンプパラメータ(t=XX)を削除
-  let cleaned_url = if url.contains("&t=") || url.contains("?t=") {
-    let re = regex::Regex::new(r"[?&]t=\d+\.?\d*").unwrap();
-    let cleaned = re.replace_all(&url, "").to_string();
-    println!("タイムスタンプを削除したURL: {}", cleaned);
-    cleaned
-  } else {
-    url.clone()
-  };
+  let cleaned_url = clean_timestamp_param(&url);
 
   // yt-dlpバイナリのパスを取得
   let yt_dlp_path = get_yt_dlp_path().await?;
@@ -167,14 +160,7 @@ pub async fn download_video(
   }
 
   // URLからタイムスタンプパラメータ(t=XX)を削除
-  let cleaned_url = if url.contains("&t=") || url.contains("?t=") {
-    let re = regex::Regex::new(r"[?&]t=\d+\.?\d*").unwrap();
-    let cleaned = re.replace_all(&url, "").to_string();
-    println!("タイムスタンプを削除したURL: {}", cleaned);
-    cleaned
-  } else {
-    url.clone()
-  };
+  let cleaned_url = clean_timestamp_param(&url);
 
   // yt-dlpバイナリのパスを取得
   let yt_dlp_path = get_yt_dlp_path().await?;
@@ -227,6 +213,7 @@ pub async fn download_video(
   };
 
   // ファイル名が存在する場合はUUIDを追加して重複を回避
+  #[allow(unused_mut)]
   let mut output_path = if Path::new(&base_output_path).exists() {
     let dir = Path::new(&base_output_path)
       .parent()
@@ -335,10 +322,7 @@ pub async fn download_video(
       None => "mp4",
     };
 
-    // 基本設定（環境に関わらず共通）
-    instance.format("best"); // 最も互換性の高い単一ストリームを選択
-
-    // 環境に応じた追加設定
+    // 環境に応じた設定
     #[cfg(not(windows))]
     {
       if best_quality {
@@ -352,6 +336,12 @@ pub async fn download_video(
           .extra_arg("--merge-output-format")
           .extra_arg(_format);
       }
+    }
+
+    // Windows環境では単一ストリームを使用
+    #[cfg(windows)]
+    {
+      instance.format("best");
     }
 
     // Windows環境向けのシンプルな設定
@@ -392,36 +382,28 @@ pub async fn download_video(
   {
     // 標準のyt-dlpコマンドを直接実行
     println!("Windows環境では直接コマンド実行を優先します...");
-    let output = std::process::Command::new(&yt_dlp_path)
-      .args(&[
-        "--verbose",
-        &url,
-        "-o",
-        &output_path,
-        "--no-check-certificate",
-        "--windows-filenames",
-        if audio_only {
-          "--extract-audio"
-        } else if best_quality {
-          "--format"
-        } else {
-          "--format"
-        },
-        if audio_only {
-          "--audio-format"
-        } else if best_quality {
-          "bestvideo+bestaudio/best"
-        } else {
-          "best"
-        },
-        if audio_only {
-          "mp3"
-        } else {
-          "--merge-output-format"
-        },
-        if !audio_only { "mp4" } else { "" },
-      ])
-      .output();
+    let mut cmd = std::process::Command::new(&yt_dlp_path);
+    cmd.args(&[
+      "--verbose",
+      &url,
+      "-o",
+      &output_path,
+      "--no-check-certificate",
+      "--windows-filenames",
+    ]);
+
+    if audio_only {
+      cmd.args(&["--extract-audio", "--audio-format", "mp3", "--audio-quality", "0"]);
+    } else {
+      let fmt = preferred_format.as_deref().unwrap_or("mp4");
+      if best_quality {
+        cmd.args(&["--format", "bestvideo+bestaudio/best", "--merge-output-format", fmt]);
+      } else {
+        cmd.args(&["--format", "best", "--merge-output-format", fmt]);
+      }
+    }
+
+    let output = cmd.output();
 
     match output {
       Ok(output) => {
@@ -505,6 +487,32 @@ pub async fn download_video(
       Err(format!("Error downloading video: {}", e))
     }
   }
+}
+
+/// URLからタイムスタンプパラメータ(t=XX)を安全に削除する関数
+fn clean_timestamp_param(url: &str) -> String {
+  if !url.contains("t=") {
+    return url.to_string();
+  }
+
+  // &t=XXを削除（中間または末尾のパラメータ）
+  let re_amp = regex::Regex::new(r"&t=\d+\.?\d*").unwrap();
+  let cleaned = re_amp.replace_all(url, "").to_string();
+
+  // ?t=XXを削除（最初のパラメータの場合）
+  // ?t=XX&... → ?... に変換
+  let re_first = regex::Regex::new(r"\?t=\d+\.?\d*&").unwrap();
+  let cleaned = re_first.replace_all(&cleaned, "?").to_string();
+
+  // ?t=XXが唯一のパラメータの場合 → クエリストリング全体を削除
+  let re_only = regex::Regex::new(r"\?t=\d+\.?\d*$").unwrap();
+  let cleaned = re_only.replace_all(&cleaned, "").to_string();
+
+  if cleaned != url {
+    println!("タイムスタンプを削除したURL: {}", cleaned);
+  }
+
+  cleaned
 }
 
 // タイトルを取得する補助関数
