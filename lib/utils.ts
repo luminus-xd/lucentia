@@ -5,18 +5,36 @@ export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
 }
 
-/** サポートするフォーマットと表示ラベルのマッピング */
-export const FORMAT_OPTIONS = {
+/** サポートする動画フォーマットと表示ラベルのマッピング */
+export const VIDEO_FORMAT_OPTIONS = {
 	mp4: "MP4",
 	mkv: "MKV",
 	webm: "WebM",
 } as const;
 
-export type VideoFormat = keyof typeof FORMAT_OPTIONS;
+/** サポートする音声フォーマットと表示ラベルのマッピング */
+export const AUDIO_FORMAT_OPTIONS = {
+	mp3: "MP3",
+	m4a: "M4A",
+} as const;
+
+/** 全フォーマット（後方互換） */
+export const FORMAT_OPTIONS = {
+	...VIDEO_FORMAT_OPTIONS,
+	...AUDIO_FORMAT_OPTIONS,
+} as const;
+
+export type VideoFormat = keyof typeof VIDEO_FORMAT_OPTIONS;
+export type AudioFormat = keyof typeof AUDIO_FORMAT_OPTIONS;
+
+/** 音声フォーマットかどうかを判定 */
+export function isAudioFormat(format: string): boolean {
+	return format in AUDIO_FORMAT_OPTIONS;
+}
 
 /** フォーマットキーから表示ラベルを取得 */
 export function getFormatLabel(format: string): string {
-	return FORMAT_OPTIONS[format as VideoFormat] ?? "MP4";
+	return FORMAT_OPTIONS[format as keyof typeof FORMAT_OPTIONS] ?? "MP4";
 }
 
 /** Set の要素をトグルする（あれば削除、なければ追加） */

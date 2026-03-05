@@ -19,6 +19,8 @@ use crate::utils::{get_default_download_path, is_safe_path, is_valid_url, saniti
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "flv"];
 /// 対応する音声拡張子
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "m4a", "opus", "ogg", "wav", "flac", "aac"];
+/// yt-dlp でダウンロード可能な音声フォーマット
+const SUPPORTED_AUDIO_FORMATS: &[&str] = &["mp3", "m4a"];
 
 static RE_AMP_TIMESTAMP: LazyLock<Regex> =
   LazyLock::new(|| Regex::new(r"&t=\d+\.?\d*").unwrap());
@@ -182,9 +184,10 @@ pub async fn download_video(
     },
   };
 
-  // 出力ファイル名生成（audio_only によって拡張子が変わる）
+  // 出力ファイル名生成（不正なフォーマットはデフォルトにフォールバック）
   let extension = if audio_only {
-    "mp3"
+    let fmt = preferred_format.as_deref().unwrap_or("mp3");
+    if SUPPORTED_AUDIO_FORMATS.contains(&fmt) { fmt } else { "mp3" }
   } else {
     preferred_format.as_deref().unwrap_or("mp4")
   };
@@ -362,8 +365,13 @@ fn build_yt_dlp_args(
   args.push("--windows-filenames".into());
 
   if audio_only {
+    let audio_format = if SUPPORTED_AUDIO_FORMATS.contains(&format_value) {
+      format_value
+    } else {
+      "mp3"
+    };
     args.extend(
-      ["--extract-audio", "--audio-format", "mp3", "--audio-quality", "0"]
+      ["--extract-audio", "--audio-format", audio_format, "--audio-quality", "0"]
         .map(String::from),
     );
 

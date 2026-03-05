@@ -3,7 +3,9 @@
 import {
 	Select,
 	SelectContent,
+	SelectGroup,
 	SelectItem,
+	SelectLabel,
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
@@ -12,7 +14,7 @@ import { useSettings } from "@/lib/hooks/useSettings";
 import { useVideoDownloader } from "@/lib/hooks/useVideoDownloader";
 import { ensureNotificationPermission } from "@/lib/notifications";
 import { useTranslation } from "@/lib/i18n";
-import { FORMAT_OPTIONS } from "@/lib/utils";
+import { VIDEO_FORMAT_OPTIONS, AUDIO_FORMAT_OPTIONS } from "@/lib/utils";
 import {
 	ArrowDownToLine,
 	Link,
@@ -85,11 +87,28 @@ export default function DashboardPage() {
 							<SelectValue placeholder="MP4 1080p" />
 						</SelectTrigger>
 						<SelectContent>
-							{Object.entries(FORMAT_OPTIONS).map(([value, label]) => (
-								<SelectItem key={value} value={value}>
-									{label} 1080p
-								</SelectItem>
-							))}
+							{(() => {
+								const groupLabel = "px-3 pb-1 pt-1.5 text-xs font-medium tracking-widest text-muted-foreground/60 uppercase";
+								return (<>
+									<SelectGroup>
+										<SelectLabel className={groupLabel}>{t("downloads.videos")}</SelectLabel>
+										{Object.entries(VIDEO_FORMAT_OPTIONS).map(([value, label]) => (
+											<SelectItem key={value} value={value}>
+												{label} 1080p
+											</SelectItem>
+										))}
+									</SelectGroup>
+									<div className="mx-2 my-1 h-px bg-border/50" />
+									<SelectGroup>
+										<SelectLabel className={groupLabel}>{t("downloads.audio")}</SelectLabel>
+										{Object.entries(AUDIO_FORMAT_OPTIONS).map(([value, label]) => (
+											<SelectItem key={value} value={value}>
+												{label}
+											</SelectItem>
+										))}
+									</SelectGroup>
+								</>);
+							})()}
 						</SelectContent>
 					</Select>
 					<button

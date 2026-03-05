@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useStableT, useTranslation } from "../i18n";
 import { notifyDownloadComplete, notifyDownloadError, warmUpAudioContext } from "../notifications";
+import { isAudioFormat } from "../utils";
 import type { AppSettings } from "./useSettings";
 
 export interface VideoMetadata {
@@ -37,7 +38,6 @@ export interface VideoDownloaderState {
 export interface VideoDownloaderActions {
 	setUrl: (url: string) => void;
 	setFolderPath: (path: string) => void;
-	setAudioOnly: (value: boolean) => void;
 	setBestQuality: (value: boolean) => void;
 	setDownloadSubtitles: (value: boolean) => void;
 	setPreferredFormat: (format: string) => void;
@@ -76,10 +76,13 @@ export function useVideoDownloader(
 	const { t } = useTranslation();
 	const [url, setUrlRaw] = useState("");
 	const [folderPath, setFolderPathRaw] = useState("");
-	const [audioOnly, setAudioOnly] = useState(false);
 	const [bestQuality, setBestQuality] = useState(true);
 	const [downloadSubtitles, setDownloadSubtitles] = useState(false);
-	const [preferredFormat, setPreferredFormat] = useState<string>("mp4");
+	const [preferredFormat, setPreferredFormatRaw] = useState<string>(() => {
+		if (typeof window === "undefined") return "mp4";
+		return localStorage.getItem("lucentia-preferred-format") || "mp4";
+	});
+	const audioOnly = isAudioFormat(preferredFormat);
 	const [customFilename, setCustomFilename] = useState("");
 	const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
 	const [status, setStatus] = useState("");
@@ -118,6 +121,12 @@ export function useVideoDownloader(
 			return;
 		}
 		setFolderPathRaw(newPath);
+	};
+
+	// フォーマット選択のラッパー関数（永続化）
+	const setPreferredFormat = (format: string) => {
+		setPreferredFormatRaw(format);
+		localStorage.setItem("lucentia-preferred-format", format);
 	};
 
 	// URL 入力後1.5秒で自動的にメタデータ取得
@@ -205,7 +214,7 @@ export function useVideoDownloader(
 				folderPath: folderPath === "" ? null : folderPath,
 				bestQuality: !audioOnly && bestQuality,
 				downloadSubtitles: !audioOnly && downloadSubtitles,
-				preferredFormat: !audioOnly ? preferredFormat : null,
+				preferredFormat: preferredFormat,
 				customFilename: customFilename.trim() || null,
 				thumbnail: metadataRef.current?.thumbnail ?? null,
 				metadataTitle: metadataRef.current?.title ?? null,
@@ -258,7 +267,6 @@ export function useVideoDownloader(
 		statusType,
 		setUrl,
 		setFolderPath,
-		setAudioOnly,
 		setBestQuality,
 		setDownloadSubtitles,
 		setPreferredFormat,

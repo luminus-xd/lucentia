@@ -59,7 +59,7 @@ export const FileTableRow = memo(function FileTableRow({
 			</div>
 
 			<div className="w-[100px]">
-				<span className="inline-block bg-cyan text-cyan-foreground text-[10px] font-bold font-mono rounded px-2 py-0.5 leading-tight">
+				<span className={`inline-block text-[10px] font-bold font-mono rounded px-2 py-0.5 leading-tight ${file.category === "audio" ? "bg-amber-500/20 text-amber-400" : "bg-cyan text-cyan-foreground"}`}>
 					{file.format}
 				</span>
 			</div>
