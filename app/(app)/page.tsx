@@ -13,6 +13,7 @@ import {
 	TrendingUp,
 	Trophy,
 	HardDrive,
+	X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { StatsCard } from "./_components/StatsCard";
@@ -105,9 +106,19 @@ export default function DashboardPage() {
 							placeholder="https://www.youtube.com/watch?v=..."
 							className="h-12 w-full rounded-lg border border-[#22D3EE]/20 bg-[#1E293B] pl-11 pr-14 font-mono text-[13px] text-foreground placeholder:text-[#475569] focus:border-[#22D3EE]/40 focus:outline-none focus:ring-1 focus:ring-[#22D3EE]/30"
 						/>
-						<kbd className="absolute top-1/2 right-4 -translate-y-1/2 rounded bg-[#334155] px-1.5 py-0.5 font-mono text-[10px] text-[#64748B]">
-							/
-						</kbd>
+						{url ? (
+							<button
+								type="button"
+								onClick={() => setUrl("")}
+								className="absolute top-1/2 right-4 -translate-y-1/2 rounded p-0.5 text-[#64748B] transition-colors hover:text-foreground"
+							>
+								<X className="size-3.5" />
+							</button>
+						) : (
+							<kbd className="absolute top-1/2 right-4 -translate-y-1/2 rounded bg-[#334155] px-1.5 py-0.5 font-mono text-[10px] text-[#64748B]">
+								/
+							</kbd>
+						)}
 					</div>
 					<FormatPicker
 						value={preferredFormat}
