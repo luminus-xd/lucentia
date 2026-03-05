@@ -45,6 +45,24 @@ interface VideoFormProps {
 	handleDownload: () => Promise<void>;
 }
 
+const videoInputIcon = (
+	<div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+		<Video className="h-4 w-4" />
+	</div>
+);
+
+const fileInputIcon = (
+	<div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+		<File className="h-4 w-4" />
+	</div>
+);
+
+const noThumbnailPlaceholder = (
+	<div className="flex items-center justify-center w-full h-full bg-muted/50">
+		<Video className="h-12 w-12 text-muted-foreground/50" />
+	</div>
+);
+
 export function VideoForm({
 	url,
 	setUrl,
@@ -80,10 +98,8 @@ export function VideoForm({
 						disabled={downloading}
 						className="input-dark pl-10 pr-10"
 					/>
-					<div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-						<Video className="h-4 w-4" />
-					</div>
-					{url && (
+					{videoInputIcon}
+					{url ? (
 						<button
 							type="button"
 							onClick={() => setUrl("")}
@@ -93,7 +109,7 @@ export function VideoForm({
 						>
 							<X className="h-4 w-4" />
 						</button>
-					)}
+					) : null}
 				</div>
 			</div>
 
@@ -111,10 +127,8 @@ export function VideoForm({
 						disabled={downloading}
 						className="input-dark pl-10 pr-10"
 					/>
-					<div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-						<File className="h-4 w-4" />
-					</div>
-					{customFilename && (
+					{fileInputIcon}
+					{customFilename ? (
 						<button
 							type="button"
 							onClick={() => setCustomFilename("")}
@@ -124,7 +138,7 @@ export function VideoForm({
 						>
 							<X className="h-4 w-4" />
 						</button>
-					)}
+					) : null}
 				</div>
 			</div>
 
@@ -173,7 +187,7 @@ export function VideoForm({
 					</div>
 				</div>
 
-				{!audioOnly && (
+				{!audioOnly ? (
 					<div className="p-3 rounded-lg border border-border/40 bg-muted/10">
 						<Label className="text-sm font-medium mb-2 block">
 							フォーマット
@@ -193,7 +207,7 @@ export function VideoForm({
 							</SelectContent>
 						</Select>
 					</div>
-				)}
+				) : null}
 			</div>
 
 			<div>
@@ -217,16 +231,16 @@ export function VideoForm({
 				</Button>
 			</div>
 
-			{downloading && (
+			{downloading ? (
 				<div className="space-y-1">
 					<Progress value={progress} className="h-2" />
 					<p className="text-xs text-right text-muted-foreground">
 						{Math.round(progress)}%
 					</p>
 				</div>
-			)}
+			) : null}
 
-			{metadata && (
+			{metadata ? (
 				<Card className="overflow-hidden border border-border/50 bg-background/50 backdrop-blur-xs">
 					<div className="relative aspect-video w-full overflow-hidden">
 						{metadata.thumbnail ? (
@@ -237,11 +251,9 @@ export function VideoForm({
 								className="object-cover transition-transform hover:scale-105 duration-500"
 							/>
 						) : (
-							<div className="flex items-center justify-center w-full h-full bg-muted/50">
-								<Video className="h-12 w-12 text-muted-foreground/50" />
-							</div>
+							noThumbnailPlaceholder
 						)}
-						{metadata.duration && (
+						{metadata.duration ? (
 							<Badge
 								variant="secondary"
 								className="absolute bottom-2 right-2 flex items-center gap-1 bg-black/70 text-white"
@@ -249,7 +261,7 @@ export function VideoForm({
 								<Clock className="h-3 w-3" />
 								{metadata.duration}
 							</Badge>
-						)}
+						) : null}
 					</div>
 					<CardContent className="p-3">
 						<h3 className="font-medium line-clamp-2 text-sm">
@@ -257,13 +269,13 @@ export function VideoForm({
 						</h3>
 					</CardContent>
 				</Card>
-			)}
+			) : null}
 
-			{status && (
+			{status ? (
 				<div className="text-sm text-muted-foreground">
 					<p>{status}</p>
 				</div>
-			)}
+			) : null}
 		</div>
 	);
 }

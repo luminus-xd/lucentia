@@ -43,13 +43,13 @@ function isValidUrl(url: string): boolean {
 }
 
 // フォルダパスを検証する関数
+const INVALID_PATH_CHARS = /["<>|]/;
 function isValidFolderPath(path: string): boolean {
 	// 空のパスはOK（デフォルトパスを使用する）
 	if (!path.trim()) return true;
-	
+
 	// 基本的な不正文字チェック
-	const invalidChars = /["<>|]/;
-	if (invalidChars.test(path)) return false;
+	if (INVALID_PATH_CHARS.test(path)) return false;
 
 	// パスインジェクション攻撃対策
 	if (path.includes("..") || path.includes("~")) return false;
@@ -60,7 +60,14 @@ function isValidFolderPath(path: string): boolean {
 export function useVideoDownloader(): VideoDownloaderState &
 	VideoDownloaderActions {
 	const [url, setUrlRaw] = useState("");
-	const [folderPath, setFolderPathRaw] = useState("");
+	const [folderPath, setFolderPathRaw] = useState(() => {
+		try {
+			const storedPath = localStorage.getItem("folderPath");
+			return storedPath && isValidFolderPath(storedPath) ? storedPath : "";
+		} catch {
+			return "";
+		}
+	});
 	const [audioOnly, setAudioOnly] = useState(false);
 	const [bestQuality, setBestQuality] = useState(true);
 	const [downloadSubtitles, setDownloadSubtitles] = useState(false);
@@ -76,38 +83,32 @@ export function useVideoDownloader(): VideoDownloaderState &
 	// URL入力のラッパー関数（検証を追加）
 	const setUrl = (newUrl: string) => {
 		setUrlRaw(newUrl);
-		if (!newUrl) {
+		if (!newUrl || isValidUrl(newUrl)) {
 			setStatus("");
-		} else if (!isValidUrl(newUrl)) {
-			setStatus("無効なURLです。http://またはhttps://で始まるURLを入力してください。");
-		} else {
-			setStatus("");
+			return;
 		}
+		setStatus(
+			"無効なURLです。http://またはhttps://で始まるURLを入力してください。",
+		);
 	};
 
-	// フォルダパス入力のラッパー関数（検証を追加）
+	// フォルダパス入力のラッパー関数（検証を追加・localStorage保存をイベントハンドラに統合）
 	const setFolderPath = (newPath: string) => {
-		if (isValidFolderPath(newPath)) {
-			setFolderPathRaw(newPath);
-		} else {
+		if (!isValidFolderPath(newPath)) {
 			setStatus("無効なフォルダパスです。");
+			return;
+		}
+		setFolderPathRaw(newPath);
+		try {
+			if (newPath) {
+				localStorage.setItem("folderPath", newPath);
+			} else {
+				localStorage.removeItem("folderPath");
+			}
+		} catch {
+			// ストレージアクセス不可の場合は無視
 		}
 	};
-
-	// ローカルストレージから保存先パスを読み込み
-	useEffect(() => {
-		const storedPath = localStorage.getItem("folderPath");
-		if (storedPath && isValidFolderPath(storedPath)) {
-			setFolderPathRaw(storedPath);
-		}
-	}, []);
-
-	// 保存先パスが変更されたらローカルストレージに保存
-	useEffect(() => {
-		if (folderPath) {
-			localStorage.setItem("folderPath", folderPath);
-		}
-	}, [folderPath]);
 
 	// URL 入力後1.5秒で自動的にメタデータ取得
 	useEffect(() => {
@@ -164,7 +165,9 @@ export function useVideoDownloader(): VideoDownloaderState &
 
 		// URLが無効な場合は処理しない
 		if (!isValidUrl(url)) {
-			setStatus("無効なURLです。http://またはhttps://で始まるURLを入力してください。");
+			setStatus(
+				"無効なURLです。http://またはhttps://で始まるURLを入力してください。",
+			);
 			return;
 		}
 

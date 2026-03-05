@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { FolderOpen, Save } from "lucide-react";
 import {
 	Dialog,
@@ -29,9 +29,12 @@ export function DialogSettingPath({
 	const [dialogOpen, setDialogOpen] = useState(false);
 	const [tempPath, setTempPath] = useState(initialPath);
 
-	useEffect(() => {
-		setTempPath(initialPath);
-	}, [initialPath]);
+	const handleOpenChange = (open: boolean) => {
+		if (open) {
+			setTempPath(initialPath);
+		}
+		setDialogOpen(open);
+	};
 
 	const handleSave = () => {
 		onPathChange(tempPath);
@@ -57,7 +60,7 @@ export function DialogSettingPath({
 	};
 
 	return (
-		<Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+		<Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
 			<DialogTrigger asChild>
 				<Button
 					variant="ghost"
