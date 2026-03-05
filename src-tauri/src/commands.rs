@@ -10,7 +10,7 @@ use tokio::io::AsyncBufReadExt;
 use uuid::Uuid;
 use youtube_dl::YoutubeDl;
 
-use crate::downloader::get_yt_dlp_path;
+use crate::downloader::{get_ffmpeg_dir, get_yt_dlp_path};
 use crate::history::{self, HistoryEntry, HistoryGroup, HistoryStatus};
 use crate::settings::{self, AppSettings};
 use crate::utils::{get_default_download_path, is_safe_path, is_valid_url, sanitize_filename};
@@ -290,6 +290,11 @@ pub async fn download_video(
 
   log::info!("Output file: {output_path}");
 
+  let ffmpeg_location = get_ffmpeg_dir().ok().and_then(|dir| {
+    let ffmpeg = dir.join(if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" });
+    ffmpeg.exists().then(|| dir.to_string_lossy().to_string())
+  });
+
   let args = build_yt_dlp_args(
     &cleaned_url,
     &output_path,
@@ -298,6 +303,7 @@ pub async fn download_video(
     download_subtitles,
     preferred_format.as_deref(),
     app_settings.cookies_browser.as_deref(),
+    ffmpeg_location.as_deref(),
   );
 
   log::info!("Starting download...");
@@ -348,6 +354,7 @@ fn build_yt_dlp_args(
   download_subtitles: bool,
   preferred_format: Option<&str>,
   cookies_browser: Option<&str>,
+  ffmpeg_location: Option<&str>,
 ) -> Vec<String> {
   let format_value = preferred_format.unwrap_or("mp4");
   let mut args: Vec<String> = vec![
@@ -356,6 +363,10 @@ fn build_yt_dlp_args(
     "15".into(),
     "--no-check-certificate".into(),
   ];
+
+  if let Some(location) = ffmpeg_location {
+    args.extend(["--ffmpeg-location".into(), location.into()]);
+  }
 
   if let Some(browser) = cookies_browser {
     args.extend(["--cookies-from-browser".into(), browser.to_string()]);
@@ -391,16 +402,11 @@ fn build_yt_dlp_args(
       .map(String::from),
     );
 
-    #[cfg(windows)]
-    args.push("--prefer-ffmpeg".into());
   } else {
     args.extend(
       ["--format", "best", "--merge-output-format", format_value]
         .map(String::from),
     );
-
-    #[cfg(windows)]
-    args.push("--prefer-ffmpeg".into());
   }
 
   if download_subtitles {

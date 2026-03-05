@@ -16,7 +16,7 @@ use crate::commands::{
   initialize_app, is_initialized, list_downloaded_files, open_file, open_file_in_folder,
   reset_settings, save_settings, update_yt_dlp, validate_save_path,
 };
-use crate::downloader::{ensure_deno, get_deno_dir, get_yt_dlp_path};
+use crate::downloader::{ensure_deno, ensure_ffmpeg, get_deno_dir, get_ffmpeg_dir, get_yt_dlp_path};
 
 fn main() {
   // 環境に応じたPATH設定
@@ -33,11 +33,14 @@ fn main() {
       env::set_var("VOLTA_HOME", &volta_home);
     }
 
-    // アプリ同梱のDenoディレクトリを最優先でPATHに追加
+    // アプリ同梱のバイナリディレクトリを最優先でPATHに追加
     let deno_dir = get_deno_dir().unwrap_or_default();
     let deno_dir_str = deno_dir.to_string_lossy().to_string();
+    let ffmpeg_dir = get_ffmpeg_dir().unwrap_or_default();
+    let ffmpeg_dir_str = ffmpeg_dir.to_string_lossy().to_string();
 
     let extra_paths = [
+      ffmpeg_dir_str.as_str(),
       deno_dir_str.as_str(),
       "/opt/homebrew/bin",
       "/usr/local/bin",
@@ -108,12 +111,12 @@ fn main() {
       clear_cache,
     ])
     .setup(|_app| {
-      // yt-dlp と Deno のダウンロードを非同期で並行実行
+      // yt-dlp, Deno, FFmpeg のダウンロードを非同期で並行実行
       std::thread::spawn(|| {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
-          let (yt_dlp_result, deno_result) =
-            tokio::join!(get_yt_dlp_path(), ensure_deno());
+          let (yt_dlp_result, deno_result, ffmpeg_result) =
+            tokio::join!(get_yt_dlp_path(), ensure_deno(), ensure_ffmpeg());
 
           match yt_dlp_result {
             Ok(_) => log::info!("yt-dlpバイナリの準備が完了しました"),
@@ -122,6 +125,10 @@ fn main() {
           match deno_result {
             Ok(_) => log::info!("Denoランタイムの準備が完了しました"),
             Err(e) => log::error!("Denoランタイムの準備に失敗しました: {e}"),
+          }
+          match ffmpeg_result {
+            Ok(_) => log::info!("FFmpegバイナリの準備が完了しました"),
+            Err(e) => log::error!("FFmpegバイナリの準備に失敗しました: {e}"),
           }
         });
       });

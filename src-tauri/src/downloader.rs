@@ -113,6 +113,139 @@ async fn download_and_setup_yt_dlp(app_data_dir: &std::path::Path) -> Result<Pat
   Ok(path)
 }
 
+// ─── FFmpeg ───────────────────────────────────────
+
+/// FFmpegバイナリが格納されるディレクトリパスを取得する
+pub fn get_ffmpeg_dir() -> Result<PathBuf, String> {
+  let app_data_dir = ensure_app_data_dir()?;
+  let ffmpeg_dir = app_data_dir.join("ffmpeg");
+  std::fs::create_dir_all(&ffmpeg_dir)
+    .map_err(|e| format!("error.dir_create_failed:{e}"))?;
+  Ok(ffmpeg_dir)
+}
+
+/// FFmpegバイナリの準備（存在しなければダウンロード）
+pub async fn ensure_ffmpeg() -> Result<PathBuf, String> {
+  let ffmpeg_dir = get_ffmpeg_dir()?;
+  let ffmpeg_path = ffmpeg_dir.join(ffmpeg_binary_name());
+  let ffprobe_path = ffmpeg_dir.join(ffprobe_binary_name());
+
+  if ffmpeg_path.exists() && ffprobe_path.exists() {
+    match std::process::Command::new(&ffmpeg_path).arg("-version").output() {
+      Ok(output) if output.status.success() => {
+        let version = String::from_utf8_lossy(&output.stdout);
+        let first_line = version.lines().next().unwrap_or("unknown");
+        log::info!("既存のFFmpegを使用: {first_line}");
+        return Ok(ffmpeg_dir);
+      }
+      _ => {
+        log::warn!("既存のFFmpegバイナリが壊れています。再ダウンロードします");
+        let _ = std::fs::remove_file(&ffmpeg_path);
+        let _ = std::fs::remove_file(&ffprobe_path);
+      }
+    }
+  }
+
+  log::info!("FFmpegをダウンロードしています...");
+  download_ffmpeg_binaries(&ffmpeg_dir).await?;
+  Ok(ffmpeg_dir)
+}
+
+fn ffmpeg_binary_name() -> &'static str {
+  if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" }
+}
+
+fn ffprobe_binary_name() -> &'static str {
+  if cfg!(windows) { "ffprobe.exe" } else { "ffprobe" }
+}
+
+/// プラットフォームに応じたFFmpegダウンロードURLのサフィックスを返す
+fn ffmpeg_platform_suffix() -> Result<&'static str, String> {
+  if cfg!(target_os = "macos") && cfg!(target_arch = "aarch64") {
+    Ok("darwin-arm64")
+  } else if cfg!(target_os = "macos") && cfg!(target_arch = "x86_64") {
+    Ok("darwin-x64")
+  } else if cfg!(target_os = "windows") && cfg!(target_arch = "x86_64") {
+    Ok("win32-x64")
+  } else if cfg!(target_os = "linux") && cfg!(target_arch = "x86_64") {
+    Ok("linux-x64")
+  } else if cfg!(target_os = "linux") && cfg!(target_arch = "aarch64") {
+    Ok("linux-arm64")
+  } else {
+    Err("error.ffmpeg_not_supported".to_string())
+  }
+}
+
+/// eugeneware/ffmpeg-static からFFmpegとFFprobeをダウンロードして展開する
+async fn download_ffmpeg_binaries(dest_dir: &std::path::Path) -> Result<(), String> {
+  let suffix = ffmpeg_platform_suffix()?;
+  let base_url = "https://github.com/eugeneware/ffmpeg-static/releases/latest/download";
+
+  let ffmpeg_url = format!("{base_url}/ffmpeg-{suffix}.gz");
+  let ffprobe_url = format!("{base_url}/ffprobe-{suffix}.gz");
+
+  let ffmpeg_path = dest_dir.join(ffmpeg_binary_name());
+  let ffprobe_path = dest_dir.join(ffprobe_binary_name());
+
+  let (ffmpeg_result, ffprobe_result) = tokio::join!(
+    download_and_decompress_gz(&ffmpeg_url, &ffmpeg_path),
+    download_and_decompress_gz(&ffprobe_url, &ffprobe_path),
+  );
+
+  ffmpeg_result?;
+  ffprobe_result?;
+
+  log::info!("FFmpegとFFprobeをインストールしました: {}", dest_dir.display());
+  Ok(())
+}
+
+/// .gz ファイルをダウンロードしてストリーミング展開する
+///
+/// 一時ファイルに書き出してからリネームすることで、
+/// 途中失敗時に不完全なバイナリが残ることを防ぐ。
+async fn download_and_decompress_gz(
+  url: &str,
+  dest_path: &std::path::Path,
+) -> Result<(), String> {
+  use flate2::write::GzDecoder;
+  use futures_util::StreamExt;
+  use std::io::Write;
+
+  log::info!("ダウンロード中: {url}");
+  let response = reqwest::get(url)
+    .await
+    .map_err(|e| format!("error.ffmpeg_download_failed:{e}"))?;
+
+  if !response.status().is_success() {
+    return Err(format!("error.ffmpeg_download_http_failed:HTTP {}", response.status()));
+  }
+
+  let tmp_path = dest_path.with_extension("tmp");
+  let file = std::fs::File::create(&tmp_path)
+    .map_err(|e| format!("error.ffmpeg_file_create_failed:{e}"))?;
+  let mut decoder = GzDecoder::new(file);
+
+  let mut stream = response.bytes_stream();
+  while let Some(chunk) = stream.next().await {
+    let chunk = chunk.map_err(|e| format!("error.ffmpeg_response_failed:{e}"))?;
+    decoder
+      .write_all(&chunk)
+      .map_err(|e| format!("error.ffmpeg_decompress_failed:{e}"))?;
+  }
+
+  decoder
+    .finish()
+    .map_err(|e| format!("error.ffmpeg_decompress_failed:{e}"))?;
+
+  std::fs::rename(&tmp_path, dest_path)
+    .map_err(|e| format!("error.ffmpeg_file_write_failed:{e}"))?;
+
+  #[cfg(unix)]
+  set_executable(dest_path)?;
+
+  Ok(())
+}
+
 // ─── Deno (JSランタイム) ───────────────────────────
 
 /// Denoバイナリが格納されるディレクトリパスを取得する
