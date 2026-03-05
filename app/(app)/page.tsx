@@ -8,7 +8,9 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { useHistory, formatBytes } from "@/lib/hooks/useHistory";
+import { useSettings } from "@/lib/hooks/useSettings";
 import { useVideoDownloader } from "@/lib/hooks/useVideoDownloader";
+import { ensureNotificationPermission } from "@/lib/notifications";
 import { FORMAT_OPTIONS, getFormatLabel } from "@/lib/utils";
 import {
 	ArrowDownToLine,
@@ -20,8 +22,11 @@ import {
 	TrendingUp,
 	Trophy,
 } from "lucide-react";
+import { useEffect } from "react";
 
 export default function DashboardPage() {
+	const { settings } = useSettings();
+
 	const {
 		url,
 		metadata,
@@ -31,9 +36,16 @@ export default function DashboardPage() {
 		setUrl,
 		setPreferredFormat,
 		handleDownload,
-	} = useVideoDownloader();
+	} = useVideoDownloader(settings);
 
 	const { stats: dlStats, successRate } = useHistory();
+
+	// 通知がONの場合、権限をリクエストする
+	useEffect(() => {
+		if (settings.notifComplete || settings.notifError) {
+			ensureNotificationPermission();
+		}
+	}, [settings.notifComplete, settings.notifError]);
 
 	const activeCount = downloading ? 1 : 0;
 

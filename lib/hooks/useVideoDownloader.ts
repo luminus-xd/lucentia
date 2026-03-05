@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { notifyDownloadComplete, notifyDownloadError, warmUpAudioContext } from "../notifications";
+import type { AppSettings } from "./useSettings";
 
 export interface VideoMetadata {
 	title: string;
@@ -67,8 +69,9 @@ function isValidFolderPath(path: string): boolean {
 	return true;
 }
 
-export function useVideoDownloader(): VideoDownloaderState &
-	VideoDownloaderActions {
+export function useVideoDownloader(
+	settings?: AppSettings,
+): VideoDownloaderState & VideoDownloaderActions {
 	const [url, setUrlRaw] = useState("");
 	const [folderPath, setFolderPathRaw] = useState("");
 	const [audioOnly, setAudioOnly] = useState(false);
@@ -90,6 +93,10 @@ export function useVideoDownloader(): VideoDownloaderState &
 	);
 
 	const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+	const settingsRef = useRef(settings);
+	settingsRef.current = settings;
+	const metadataRef = useRef(metadata);
+	metadataRef.current = metadata;
 
 	// URL入力のラッパー関数（検証を追加）
 	const setUrl = (newUrl: string) => {
@@ -162,6 +169,11 @@ export function useVideoDownloader(): VideoDownloaderState &
 	}, [downloading]);
 
 	const handleDownload = useCallback(async () => {
+		// ユーザージェスチャーのスタック上で AudioContext を初期化・resume する
+		if (settingsRef.current?.notifSound) {
+			warmUpAudioContext();
+		}
+
 		if (!url) {
 			setStatus("動画URLを入力してください");
 			return;
@@ -205,6 +217,7 @@ export function useVideoDownloader(): VideoDownloaderState &
 				description: outputPath,
 				duration: 8000,
 			});
+			notifyDownloadComplete(settingsRef.current, metadataRef.current?.title, outputPath);
 		} catch (error) {
 			setStatusType("error");
 			setStatus(`ダウンロードエラー: ${error}`);
@@ -213,6 +226,7 @@ export function useVideoDownloader(): VideoDownloaderState &
 				duration: 8000,
 			});
 			setProgress({ percent: 0, speed: null, eta: null });
+			notifyDownloadError(settingsRef.current, String(error));
 		} finally {
 			setDownloading(false);
 		}
