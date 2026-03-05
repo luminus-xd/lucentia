@@ -12,17 +12,39 @@ mod utils;
 
 use crate::commands::{
   clear_history, download_metadata, download_video, get_download_stats, get_history, get_settings,
-  save_settings,
+  get_yt_dlp_version, save_settings, update_yt_dlp,
 };
-use crate::downloader::get_yt_dlp_path;
+use crate::downloader::{ensure_deno, get_deno_dir, get_yt_dlp_path};
 
 fn main() {
   // 環境に応じたPATH設定
+  // Tauri アプリはシェルプロファイルを読まないため、
+  // Homebrew, Volta, nvm, fnm 等の一般的なパスを明示的に追加する
   #[cfg(not(windows))]
   {
-    let brew_paths = "/usr/local/bin:/opt/homebrew/bin";
     let current_path = env::var("PATH").unwrap_or_default();
-    let new_path = format!("{brew_paths}:{current_path}");
+    let home = env::var("HOME").unwrap_or_default();
+
+    // Volta の shim が動作するには VOLTA_HOME が必要
+    let volta_home = format!("{home}/.volta");
+    if std::path::Path::new(&volta_home).exists() && env::var("VOLTA_HOME").is_err() {
+      env::set_var("VOLTA_HOME", &volta_home);
+    }
+
+    // アプリ同梱のDenoディレクトリを最優先でPATHに追加
+    let deno_dir = get_deno_dir().unwrap_or_default();
+    let deno_dir_str = deno_dir.to_string_lossy().to_string();
+
+    let extra_paths = [
+      deno_dir_str.as_str(),
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+      &format!("{home}/.volta/bin"),
+      &format!("{home}/.nvm/current/bin"),
+      &format!("{home}/.fnm/current/bin"),
+      &format!("{home}/.local/bin"),
+    ];
+    let new_path = format!("{}:{current_path}", extra_paths.join(":"));
     env::set_var("PATH", new_path);
   }
 
@@ -69,15 +91,24 @@ fn main() {
       get_history,
       get_download_stats,
       clear_history,
+      update_yt_dlp,
+      get_yt_dlp_version,
     ])
     .setup(|_app| {
-      // yt-dlpバイナリのダウンロードを非同期で実行
+      // yt-dlp と Deno のダウンロードを非同期で並行実行
       std::thread::spawn(|| {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
-          match get_yt_dlp_path().await {
+          let (yt_dlp_result, deno_result) =
+            tokio::join!(get_yt_dlp_path(), ensure_deno());
+
+          match yt_dlp_result {
             Ok(_) => log::info!("yt-dlpバイナリの準備が完了しました"),
             Err(e) => log::error!("yt-dlpバイナリの準備に失敗しました: {e}"),
+          }
+          match deno_result {
+            Ok(_) => log::info!("Denoランタイムの準備が完了しました"),
+            Err(e) => log::error!("Denoランタイムの準備に失敗しました: {e}"),
           }
         });
       });
