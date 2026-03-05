@@ -20,8 +20,10 @@ static RE_FIRST_TIMESTAMP: LazyLock<Regex> =
   LazyLock::new(|| Regex::new(r"\?t=\d+\.?\d*&").unwrap());
 static RE_ONLY_TIMESTAMP: LazyLock<Regex> =
   LazyLock::new(|| Regex::new(r"\?t=\d+\.?\d*$").unwrap());
-static RE_PROGRESS: LazyLock<Regex> =
-  LazyLock::new(|| Regex::new(r"\[download\]\s+(\d+\.?\d*)%").unwrap());
+static RE_PROGRESS: LazyLock<Regex> = LazyLock::new(|| {
+  Regex::new(r"\[download\]\s+(\d+\.?\d*)%(?:\s+of\s+~?\S+\s+at\s+(\S+)(?:\s+ETA\s+(\S+))?)?")
+    .unwrap()
+});
 
 #[derive(Serialize)]
 pub struct VideoMetadata {
@@ -33,6 +35,8 @@ pub struct VideoMetadata {
 #[derive(Serialize, Clone)]
 struct DownloadProgress {
   percent: f64,
+  speed: Option<String>,
+  eta: Option<String>,
 }
 
 #[tauri::command]
@@ -294,7 +298,7 @@ pub async fn download_video(
     let file_size = std::fs::metadata(&output_path).ok().map(|m| m.len());
     let size_str = file_size.map_or("不明".to_string(), |s| format!("{s} bytes"));
     log::info!("出力ファイル: {output_path} (サイズ: {size_str})");
-    let _ = app_handle.emit("download-progress", DownloadProgress { percent: 100.0 });
+    let _ = app_handle.emit("download-progress", DownloadProgress { percent: 100.0, speed: None, eta: None });
 
     let _ = history::add_entry(build_history_entry(
       &url, &filename_base, extension, best_quality,
@@ -457,10 +461,15 @@ async fn run_yt_dlp_with_progress(
         };
 
         let percent = percent.min(95.0);
+
+        // speed / ETA をキャプチャ（yt-dlp 出力に含まれている場合のみ）
+        let speed = caps.get(2).map(|m| m.as_str().to_string());
+        let eta = caps.get(3).map(|m| m.as_str().to_string());
+
         // 前回より大きい値のときだけ emit（プログレスバーの逆戻りを防止）
         if percent > last_emitted {
           last_emitted = percent;
-          let _ = app_handle.emit("download-progress", DownloadProgress { percent });
+          let _ = app_handle.emit("download-progress", DownloadProgress { percent, speed, eta });
         }
       }
     } else if (line.contains("[Merger]")
@@ -469,7 +478,10 @@ async fn run_yt_dlp_with_progress(
       && last_emitted < 95.0
     {
       last_emitted = 95.0;
-      let _ = app_handle.emit("download-progress", DownloadProgress { percent: 95.0 });
+      let _ = app_handle.emit(
+        "download-progress",
+        DownloadProgress { percent: 95.0, speed: None, eta: None },
+      );
     }
   }
 

@@ -45,6 +45,7 @@ pub struct DownloadStats {
   pub week_size: u64,
   pub month_count: u32,
   pub month_size: u64,
+  pub month_total: u32,
 }
 
 /// 履歴ファイルのパスを取得する
@@ -149,15 +150,22 @@ pub fn get_stats() -> Result<DownloadStats, String> {
     week_size: 0,
     month_count: 0,
     month_size: 0,
+    month_total: 0,
   };
 
   for entry in &entries {
+    let entry_local: DateTime<Local> = entry.timestamp.into();
+    let entry_date = entry_local.date_naive();
+
+    // 過去30日の全エントリ（成功+失敗）をカウント
+    if entry_date >= month_ago {
+      stats.month_total += 1;
+    }
+
     if entry.status != HistoryStatus::Success {
       continue;
     }
 
-    let entry_local: DateTime<Local> = entry.timestamp.into();
-    let entry_date = entry_local.date_naive();
     let size = entry.size.unwrap_or(0);
 
     if entry_date == today {

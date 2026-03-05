@@ -27,6 +27,7 @@ export interface DownloadStats {
 	weekSize: number;
 	monthCount: number;
 	monthSize: number;
+	monthTotal: number;
 }
 
 const EMPTY_STATS: DownloadStats = {
@@ -36,6 +37,7 @@ const EMPTY_STATS: DownloadStats = {
 	weekSize: 0,
 	monthCount: 0,
 	monthSize: 0,
+	monthTotal: 0,
 };
 
 export function useHistory() {
@@ -66,7 +68,12 @@ export function useHistory() {
 		setStats(EMPTY_STATS);
 	}, []);
 
-	return { history, stats, loading, refresh, clearHistory };
+	const successRate =
+		stats.monthTotal > 0
+			? Number(((stats.monthCount / stats.monthTotal) * 100).toFixed(1))
+			: null;
+
+	return { history, stats, successRate, loading, refresh, clearHistory };
 }
 
 /** バイト数を人間が読みやすい形式にフォーマット */

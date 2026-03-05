@@ -20,8 +20,7 @@ import {
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useSettings } from "@/lib/hooks/useSettings";
-
-const FORMAT_OPTIONS = ["mp4", "mkv", "webm"] as const;
+import { FORMAT_OPTIONS } from "@/lib/utils";
 const BROWSER_OPTIONS = [
 	{ value: "", label: "None (disabled)" },
 	{ value: "chrome", label: "Chrome" },
@@ -237,18 +236,18 @@ export default function SettingsPage() {
 						<div className="flex flex-col gap-2">
 							<FieldLabel>DEFAULT FORMAT</FieldLabel>
 							<div className="flex gap-2">
-								{FORMAT_OPTIONS.map((f) => (
+								{Object.entries(FORMAT_OPTIONS).map(([key, label]) => (
 									<button
-										key={f}
+										key={key}
 										type="button"
-										onClick={() => updateField("defaultFormat", f)}
+										onClick={() => updateField("defaultFormat", key)}
 										className={`px-4 h-9 rounded-lg text-sm font-medium uppercase transition-colors ${
-											settings.defaultFormat === f
+											settings.defaultFormat === key
 												? "bg-cyan text-cyan-foreground"
 												: "bg-[#0F172A] border border-border text-foreground hover:bg-[#0F172A]/80"
 										}`}
 									>
-										{f}
+										{label}
 									</button>
 								))}
 							</div>

@@ -9,6 +9,12 @@ export interface VideoMetadata {
 	duration?: string;
 }
 
+export interface DownloadProgress {
+	percent: number;
+	speed: string | null;
+	eta: string | null;
+}
+
 export interface VideoDownloaderState {
 	url: string;
 	folderPath: string;
@@ -20,7 +26,7 @@ export interface VideoDownloaderState {
 	metadata: VideoMetadata | null;
 	status: string;
 	downloading: boolean;
-	progress: number;
+	progress: DownloadProgress;
 	showCompletedProgress: boolean;
 	statusType: "idle" | "success" | "error";
 }
@@ -73,7 +79,11 @@ export function useVideoDownloader(): VideoDownloaderState &
 	const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
 	const [status, setStatus] = useState("");
 	const [downloading, setDownloading] = useState(false);
-	const [progress, setProgress] = useState(0);
+	const [progress, setProgress] = useState<DownloadProgress>({
+		percent: 0,
+		speed: null,
+		eta: null,
+	});
 	const [showCompletedProgress, setShowCompletedProgress] = useState(false);
 	const [statusType, setStatusType] = useState<"idle" | "success" | "error">(
 		"idle",
@@ -137,9 +147,12 @@ export function useVideoDownloader(): VideoDownloaderState &
 		if (!downloading) return;
 
 		let unlisten: UnlistenFn | undefined;
-		listen<{ percent: number }>("download-progress", (event) => {
-			setProgress(event.payload.percent);
-		}).then((fn) => {
+		listen<DownloadProgress>(
+			"download-progress",
+			(event) => {
+				setProgress(event.payload);
+			},
+		).then((fn) => {
 			unlisten = fn;
 		});
 
@@ -171,7 +184,7 @@ export function useVideoDownloader(): VideoDownloaderState &
 		setStatus("ダウンロード中...");
 		setStatusType("idle");
 		setDownloading(true);
-		setProgress(0);
+		setProgress({ percent: 0, speed: null, eta: null });
 
 		try {
 			const outputPath = await invoke<string>("download_video", {
@@ -183,7 +196,7 @@ export function useVideoDownloader(): VideoDownloaderState &
 				preferredFormat: !audioOnly ? preferredFormat : null,
 				customFilename: customFilename.trim() || null,
 			});
-			setProgress(100);
+			setProgress({ percent: 100, speed: null, eta: null });
 			setStatusType("success");
 			setStatus("ダウンロードが完了しました");
 			setShowCompletedProgress(true);
@@ -199,7 +212,7 @@ export function useVideoDownloader(): VideoDownloaderState &
 				description: String(error),
 				duration: 8000,
 			});
-			setProgress(0);
+			setProgress({ percent: 0, speed: null, eta: null });
 		} finally {
 			setDownloading(false);
 		}

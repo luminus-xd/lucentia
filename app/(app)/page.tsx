@@ -9,10 +9,10 @@ import {
 } from "@/components/ui/select";
 import { useHistory, formatBytes } from "@/lib/hooks/useHistory";
 import { useVideoDownloader } from "@/lib/hooks/useVideoDownloader";
+import { FORMAT_OPTIONS, getFormatLabel } from "@/lib/utils";
 import {
 	ArrowDownToLine,
 	Bell,
-	Circle,
 	Check,
 	HardDrive,
 	Link,
@@ -21,22 +21,10 @@ import {
 	Trophy,
 } from "lucide-react";
 
-interface QueueItem {
-	id: string;
-	title: string;
-	thumbnail?: string;
-	format: string;
-	status: "downloading" | "done" | "queued";
-	progress?: number;
-	speed?: string;
-	eta?: string;
-}
-
 export default function DashboardPage() {
 	const {
 		url,
 		metadata,
-		status,
 		downloading,
 		progress,
 		preferredFormat,
@@ -45,54 +33,9 @@ export default function DashboardPage() {
 		handleDownload,
 	} = useVideoDownloader();
 
-	const { stats: dlStats } = useHistory();
+	const { stats: dlStats, successRate } = useHistory();
 
-	const queueItems: QueueItem[] = [];
-
-	if (metadata) {
-		queueItems.unshift({
-			id: "current",
-			title: metadata.title,
-			thumbnail: metadata.thumbnail,
-			format: `MP4 1080p`,
-			status: downloading ? "downloading" : "done",
-			progress: downloading ? progress : 100,
-			speed: downloading ? "2.4 MB/s" : undefined,
-			eta: downloading ? "~2:34" : undefined,
-		});
-	}
-
-	const mockQueue: QueueItem[] = [
-		{
-			id: "1",
-			title: "Building a Design System from Scratch",
-			format: "MP4 1080p",
-			status: "downloading",
-			progress: 67,
-			speed: "2.4 MB/s",
-			eta: "~2:34",
-		},
-		{
-			id: "2",
-			title: "Advanced TypeScript Patterns for React",
-			format: "MP4 720p",
-			status: "done",
-		},
-		{
-			id: "3",
-			title: "The Future of Web Development - Full Conference Talk",
-			format: "MP4 1080p",
-			status: "queued",
-		},
-		{
-			id: "4",
-			title: "Rust for JavaScript Developers - Complete Tutorial",
-			format: "MP4 1080p",
-			status: "queued",
-		},
-	];
-
-	const displayQueue = metadata ? queueItems : mockQueue;
+	const activeCount = downloading ? 1 : 0;
 
 	const stats = [
 		{
@@ -111,32 +54,19 @@ export default function DashboardPage() {
 		},
 		{
 			label: "ACTIVE QUEUE",
-			value: String(displayQueue.length),
+			value: String(activeCount),
 			sub: "processing now",
 			subColor: "text-cyan",
 			icon: <ListOrdered className="size-4 text-cyan" />,
 		},
 		{
 			label: "SUCCESS RATE",
-			value: "98.4%",
+			value: successRate != null ? `${successRate}%` : "--",
 			sub: "last 30 days",
 			subColor: "text-[#64748B]",
 			icon: <Trophy className="size-4 text-[#64748B]" />,
 		},
 	];
-
-	const formatLabel = (() => {
-		switch (preferredFormat) {
-			case "mp4":
-				return "MP4 1080p";
-			case "webm":
-				return "WebM 1080p";
-			case "mkv":
-				return "MKV 1080p";
-			default:
-				return "MP4 1080p";
-		}
-	})();
 
 	return (
 		<div className="flex flex-col gap-7 py-8 px-10">
@@ -179,9 +109,11 @@ export default function DashboardPage() {
 							<SelectValue placeholder="MP4 1080p" />
 						</SelectTrigger>
 						<SelectContent>
-							<SelectItem value="mp4">MP4 1080p</SelectItem>
-							<SelectItem value="webm">WebM 1080p</SelectItem>
-							<SelectItem value="mkv">MKV 1080p</SelectItem>
+							{Object.entries(FORMAT_OPTIONS).map(([value, label]) => (
+								<SelectItem key={value} value={value}>
+									{label} 1080p
+								</SelectItem>
+							))}
 						</SelectContent>
 					</Select>
 					<button
@@ -224,20 +156,23 @@ export default function DashboardPage() {
 						DOWNLOAD QUEUE
 					</span>
 					<span className="rounded bg-cyan px-2.5 py-1 text-[11px] font-bold text-cyan-foreground">
-						{displayQueue.length}
+						{metadata ? 1 : 0}
 					</span>
 				</div>
 
-				<div className="flex flex-col gap-2 overflow-y-auto">
-					{displayQueue.map((item) => (
-						<div
-							key={item.id}
-							className="flex items-center gap-3.5 rounded-lg bg-[#1E293B] px-4 py-3.5"
-						>
-							{item.thumbnail ? (
+				{!metadata ? (
+					<div className="flex flex-1 items-center justify-center rounded-lg bg-[#1E293B] py-16">
+						<p className="text-sm text-[#64748B]">
+							No downloads in queue. Paste a URL above to get started.
+						</p>
+					</div>
+				) : (
+					<div className="flex flex-col gap-2 overflow-y-auto">
+						<div className="flex items-center gap-3.5 rounded-lg bg-[#1E293B] px-4 py-3.5">
+							{metadata.thumbnail ? (
 								<img
-									src={item.thumbnail}
-									alt={item.title}
+									src={metadata.thumbnail}
+									alt={metadata.title}
 									className="h-10 w-16 shrink-0 rounded-md object-cover"
 								/>
 							) : (
@@ -247,55 +182,50 @@ export default function DashboardPage() {
 							<div className="flex min-w-0 flex-1 flex-col gap-1.5">
 								<div className="flex items-center justify-between gap-3">
 									<span className="truncate text-sm font-medium">
-										{item.title}
+										{metadata.title}
 									</span>
-									{item.status === "downloading" && (
+									{downloading ? (
 										<span className="shrink-0 font-mono text-xs font-bold text-cyan">
-											{item.progress}%
+											{progress.percent.toFixed(0)}%
 										</span>
-									)}
-									{item.status === "done" && (
+									) : (
 										<span className="flex shrink-0 items-center gap-1 text-xs font-medium text-cyan">
 											<Check className="size-3" />
 											Done
 										</span>
 									)}
-									{item.status === "queued" && (
-										<span className="flex shrink-0 items-center gap-1 text-xs text-[#64748B]">
-											<Circle className="size-3" />
-											Queued
-										</span>
-									)}
 								</div>
 
-								{item.status === "downloading" && (
+								{downloading && (
 									<div className="h-1 w-full overflow-hidden rounded-full bg-[#0F172A]">
 										<div
 											className="h-full rounded-full bg-cyan transition-all duration-300"
-											style={{ width: `${item.progress}%` }}
+											style={{ width: `${progress.percent}%` }}
 										/>
 									</div>
 								)}
 
 								<div className="flex items-center gap-3 font-mono text-[11px] text-[#64748B]">
-									<span className="text-[#94A3B8]">{item.format}</span>
-									{item.speed && (
+									<span className="text-[#94A3B8]">
+										{getFormatLabel(preferredFormat)}
+									</span>
+									{downloading && progress.speed && (
 										<>
 											<span className="text-[#475569]">&middot;</span>
-											<span>{item.speed}</span>
+											<span>{progress.speed}</span>
 										</>
 									)}
-									{item.eta && (
+									{downloading && progress.eta && (
 										<>
 											<span className="text-[#475569]">&middot;</span>
-											<span>{item.eta}</span>
+											<span>ETA {progress.eta}</span>
 										</>
 									)}
 								</div>
 							</div>
 						</div>
-					))}
-				</div>
+					</div>
+				)}
 			</div>
 		</div>
 	);
