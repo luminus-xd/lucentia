@@ -6,9 +6,14 @@ use tokio::runtime::Runtime;
 
 mod commands;
 mod downloader;
+mod history;
+mod settings;
 mod utils;
 
-use crate::commands::{download_metadata, download_video};
+use crate::commands::{
+  clear_history, download_metadata, download_video, get_download_stats, get_history, get_settings,
+  save_settings,
+};
 use crate::downloader::get_yt_dlp_path;
 
 fn main() {
@@ -56,7 +61,15 @@ fn main() {
 
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
-    .invoke_handler(tauri::generate_handler![download_video, download_metadata])
+    .invoke_handler(tauri::generate_handler![
+      download_video,
+      download_metadata,
+      get_settings,
+      save_settings,
+      get_history,
+      get_download_stats,
+      clear_history,
+    ])
     .setup(|_app| {
       // yt-dlpバイナリのダウンロードを非同期で実行
       std::thread::spawn(|| {

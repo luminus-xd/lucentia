@@ -1,4 +1,5 @@
 use regex::Regex;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -9,6 +10,25 @@ static URL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 static INVALID_CHARS_REGEX: LazyLock<Regex> = LazyLock::new(|| {
   Regex::new(r#"[<>:"/\\|?*]"#).unwrap()
 });
+
+/// アプリケーションデータディレクトリを取得し、存在しなければ作成する
+pub fn ensure_app_data_dir() -> Result<PathBuf, String> {
+  let dir = dirs::data_dir()
+    .ok_or_else(|| "データディレクトリの取得に失敗しました".to_string())?
+    .join("my-video-downloader");
+
+  fs::create_dir_all(&dir)
+    .map_err(|e| format!("ディレクトリの作成に失敗しました: {e}"))?;
+
+  Ok(dir)
+}
+
+/// ダウンロードディレクトリを取得する
+pub fn get_download_dir() -> Result<PathBuf, String> {
+  directories::UserDirs::new()
+    .and_then(|ud| ud.download_dir().map(PathBuf::from))
+    .ok_or_else(|| "ダウンロードディレクトリの取得に失敗しました".to_string())
+}
 
 /// URLが有効かどうかを確認する関数
 pub fn is_valid_url(url: &str) -> bool {
@@ -65,18 +85,14 @@ pub fn is_safe_path(path: &Path) -> bool {
 
 /// ダウンロード先ディレクトリが取得できなかった場合の処理を含むヘルパー関数
 pub fn get_default_download_path(filename: &str) -> Result<String, String> {
-  let download_dir = directories::UserDirs::new()
-    .and_then(|ud| ud.download_dir().map(PathBuf::from))
-    .ok_or_else(|| "Error getting download directory".to_string())?;
+  let download_dir = get_download_dir()?;
 
-  // ディレクトリが存在することを確認
   if !download_dir.exists() || !download_dir.is_dir() {
     return Err("ダウンロードディレクトリが存在しないか、ディレクトリではありません".to_string());
   }
 
   let full_path = download_dir.join(filename);
 
-  // 安全なパスかどうかを確認
   if !is_safe_path(&full_path) {
     return Err("安全でないパスが生成されました".to_string());
   }

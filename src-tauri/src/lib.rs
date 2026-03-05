@@ -2,15 +2,28 @@
 
 pub mod commands;
 pub mod downloader;
+pub mod history;
+pub mod settings;
 pub mod utils;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  use crate::commands::{download_metadata, download_video};
+  use crate::commands::{
+    clear_history, download_metadata, download_video, get_download_stats, get_history,
+    get_settings, save_settings,
+  };
 
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
-    .invoke_handler(tauri::generate_handler![download_video, download_metadata])
+    .invoke_handler(tauri::generate_handler![
+      download_video,
+      download_metadata,
+      get_settings,
+      save_settings,
+      get_history,
+      get_download_stats,
+      clear_history,
+    ])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

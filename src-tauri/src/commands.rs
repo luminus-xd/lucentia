@@ -1,3 +1,4 @@
+use chrono::Utc;
 use regex::Regex;
 use serde::Serialize;
 
@@ -9,6 +10,8 @@ use uuid::Uuid;
 use youtube_dl::YoutubeDl;
 
 use crate::downloader::get_yt_dlp_path;
+use crate::history::{self, HistoryEntry, HistoryGroup, HistoryStatus};
+use crate::settings::{self, AppSettings};
 use crate::utils::{get_default_download_path, is_safe_path, is_valid_url, sanitize_filename};
 
 static RE_AMP_TIMESTAMP: LazyLock<Regex> =
@@ -264,18 +267,34 @@ pub async fn download_video(
     args.join(" ")
   );
 
-  run_yt_dlp_with_progress(&app_handle, &yt_dlp_path, &args, best_quality && !audio_only).await?;
+  if let Err(e) = run_yt_dlp_with_progress(&app_handle, &yt_dlp_path, &args, best_quality && !audio_only).await {
+    let _ = history::add_entry(build_history_entry(
+      &url, &filename_base, extension, best_quality,
+      HistoryStatus::Failed, None, Some(e.clone()),
+    ));
+    return Err(e);
+  }
 
   if Path::new(&output_path).exists() {
-    let metadata = match std::fs::metadata(&output_path) {
-      Ok(meta) => format!("{} bytes", meta.len()),
-      Err(_) => "不明".to_string(),
-    };
-    log::info!("出力ファイル: {output_path} (サイズ: {metadata})");
+    let file_size = std::fs::metadata(&output_path).ok().map(|m| m.len());
+    let size_str = file_size.map_or("不明".to_string(), |s| format!("{s} bytes"));
+    log::info!("出力ファイル: {output_path} (サイズ: {size_str})");
     let _ = app_handle.emit("download-progress", DownloadProgress { percent: 100.0 });
+
+    let _ = history::add_entry(build_history_entry(
+      &url, &filename_base, extension, best_quality,
+      HistoryStatus::Success, file_size, None,
+    ));
+
     Ok(output_path)
   } else {
     log::warn!("出力ファイルが存在しません: {output_path}");
+
+    let _ = history::add_entry(build_history_entry(
+      &url, &filename_base, extension, best_quality,
+      HistoryStatus::Failed, None, Some("ファイルが見つかりません".to_string()),
+    ));
+
     Err("ダウンロードは成功しましたが、ファイルが見つかりません".to_string())
   }
 }
@@ -467,6 +486,64 @@ fn clean_timestamp_param(url: &str) -> String {
   }
 
   cleaned
+}
+
+/// ダウンロード履歴エントリを構築するヘルパー
+fn build_history_entry(
+  url: &str,
+  title: &str,
+  extension: &str,
+  best_quality: bool,
+  status: HistoryStatus,
+  file_size: Option<u64>,
+  error_message: Option<String>,
+) -> HistoryEntry {
+  let format_label = match status {
+    HistoryStatus::Success if best_quality => {
+      format!("{} best", extension.to_uppercase())
+    }
+    _ => extension.to_uppercase(),
+  };
+
+  HistoryEntry {
+    id: Uuid::new_v4().to_string(),
+    url: url.to_string(),
+    title: title.to_string(),
+    format: format_label,
+    size: file_size,
+    status,
+    error_message,
+    timestamp: Utc::now(),
+  }
+}
+
+// ─── 設定コマンド ─────────────────────────────────
+
+#[tauri::command]
+pub fn get_settings() -> Result<AppSettings, String> {
+  settings::load_settings()
+}
+
+#[tauri::command]
+pub fn save_settings(new_settings: AppSettings) -> Result<(), String> {
+  settings::save_settings(&new_settings)
+}
+
+// ─── 履歴コマンド ─────────────────────────────────
+
+#[tauri::command]
+pub fn get_history() -> Result<Vec<HistoryGroup>, String> {
+  history::get_grouped_history()
+}
+
+#[tauri::command]
+pub fn get_download_stats() -> Result<history::DownloadStats, String> {
+  history::get_stats()
+}
+
+#[tauri::command]
+pub fn clear_history() -> Result<(), String> {
+  history::clear_all()
 }
 
 /// タイトルを取得する補助関数

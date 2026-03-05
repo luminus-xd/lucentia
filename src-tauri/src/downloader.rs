@@ -1,18 +1,13 @@
 use std::path::PathBuf;
 use youtube_dl::downloader::download_yt_dlp;
 
+use crate::utils::ensure_app_data_dir;
+
 /// yt-dlpバイナリのパスを取得する関数
 /// アプリケーションのデータディレクトリにyt-dlpバイナリが存在するかチェックし、
 /// 存在しない場合はダウンロードします。
 pub async fn get_yt_dlp_path() -> Result<PathBuf, String> {
-  let app_data_dir = dirs::data_dir()
-    .ok_or_else(|| "アプリケーションデータディレクトリの取得に失敗しました".to_string())?
-    .join("my-video-downloader");
-
-  if !app_data_dir.exists() {
-    std::fs::create_dir_all(&app_data_dir)
-      .map_err(|e| format!("ディレクトリの作成に失敗しました: {e}"))?;
-  }
+  let app_data_dir = ensure_app_data_dir()?;
 
   let yt_dlp_path = app_data_dir.join(if cfg!(windows) {
     "yt-dlp.exe"
