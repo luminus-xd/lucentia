@@ -15,7 +15,6 @@ export const en: Translations = {
 		description: "Download and manage your videos",
 		pasteUrl: "PASTE URL",
 		download: "Download",
-		downloading: "Downloading...",
 		totalDownloads: "TOTAL DOWNLOADS",
 		todayCount: "+{{count}} today",
 		storageUsed: "STORAGE USED",
