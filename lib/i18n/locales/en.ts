@@ -27,6 +27,8 @@ export const en: Translations = {
 		queueEmpty:
 			"No downloads in queue. Paste a URL above to get started.",
 		done: "Done",
+		formatSearch: "Search format...",
+		noFormatFound: "No match",
 	},
 	downloads: {
 		title: "Downloads",

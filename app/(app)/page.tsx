@@ -1,20 +1,10 @@
 "use client";
 
-import {
-	Select,
-	SelectContent,
-	SelectGroup,
-	SelectItem,
-	SelectLabel,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { useHistory, formatBytes } from "@/lib/hooks/useHistory";
 import { useSettings } from "@/lib/hooks/useSettings";
 import { useVideoDownloader } from "@/lib/hooks/useVideoDownloader";
 import { ensureNotificationPermission } from "@/lib/notifications";
 import { useTranslation } from "@/lib/i18n";
-import { VIDEO_FORMAT_OPTIONS, AUDIO_FORMAT_OPTIONS } from "@/lib/utils";
 import {
 	ArrowDownToLine,
 	Link,
@@ -23,9 +13,10 @@ import {
 	Trophy,
 	HardDrive,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { StatsCard } from "./_components/StatsCard";
 import { DownloadQueueItem } from "./_components/DownloadQueueItem";
+import { FormatPicker } from "./_components/FormatPicker";
 
 export default function DashboardPage() {
 	const { settings } = useSettings();
@@ -49,6 +40,30 @@ export default function DashboardPage() {
 			ensureNotificationPermission();
 		}
 	}, [settings.notifComplete, settings.notifError]);
+
+	const [isMac, setIsMac] = useState(false);
+	const urlInputRef = useRef<HTMLInputElement>(null);
+
+	useEffect(() => {
+		setIsMac(/Mac/.test(navigator.platform));
+
+		const handler = (e: KeyboardEvent) => {
+			const target = e.target as HTMLElement;
+			if (
+				target.tagName === "INPUT" ||
+				target.tagName === "TEXTAREA" ||
+				target.isContentEditable
+			) {
+				return;
+			}
+			if (e.key === "/") {
+				e.preventDefault();
+				urlInputRef.current?.focus();
+			}
+		};
+		window.addEventListener("keydown", handler);
+		return () => window.removeEventListener("keydown", handler);
+	}, []);
 
 	const activeCount = downloading ? 1 : 0;
 
@@ -75,42 +90,27 @@ export default function DashboardPage() {
 					<div className="relative flex-1">
 						<Link className="absolute top-1/2 left-4 size-4 -translate-y-1/2 text-[#64748B]" />
 						<input
+							ref={urlInputRef}
 							type="text"
 							value={url}
 							onChange={(e) => setUrl(e.target.value)}
+							onKeyDown={(e) => {
+								if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+									e.preventDefault();
+									handleDownload();
+								}
+							}}
 							placeholder="https://www.youtube.com/watch?v=..."
-							className="h-12 w-full rounded-lg border border-[#22D3EE]/20 bg-[#1E293B] pl-11 pr-4 font-mono text-[13px] text-foreground placeholder:text-[#475569] focus:border-[#22D3EE]/40 focus:outline-none focus:ring-1 focus:ring-[#22D3EE]/30"
+							className="h-12 w-full rounded-lg border border-[#22D3EE]/20 bg-[#1E293B] pl-11 pr-14 font-mono text-[13px] text-foreground placeholder:text-[#475569] focus:border-[#22D3EE]/40 focus:outline-none focus:ring-1 focus:ring-[#22D3EE]/30"
 						/>
+						<kbd className="absolute top-1/2 right-4 -translate-y-1/2 rounded bg-[#334155] px-1.5 py-0.5 font-mono text-[10px] text-[#64748B]">
+							/
+						</kbd>
 					</div>
-					<Select value={preferredFormat} onValueChange={setPreferredFormat}>
-						<SelectTrigger className="h-12 w-[160px] rounded-lg border-none bg-[#1E293B] px-4 text-sm font-medium">
-							<SelectValue placeholder="MP4 1080p" />
-						</SelectTrigger>
-						<SelectContent>
-							{(() => {
-								const groupLabel = "px-3 pb-1 pt-1.5 text-xs font-medium tracking-widest text-muted-foreground/60 uppercase";
-								return (<>
-									<SelectGroup>
-										<SelectLabel className={groupLabel}>{t("downloads.videos")}</SelectLabel>
-										{Object.entries(VIDEO_FORMAT_OPTIONS).map(([value, label]) => (
-											<SelectItem key={value} value={value}>
-												{label} 1080p
-											</SelectItem>
-										))}
-									</SelectGroup>
-									<div className="mx-2 my-1 h-px bg-border/50" />
-									<SelectGroup>
-										<SelectLabel className={groupLabel}>{t("downloads.audio")}</SelectLabel>
-										{Object.entries(AUDIO_FORMAT_OPTIONS).map(([value, label]) => (
-											<SelectItem key={value} value={value}>
-												{label}
-											</SelectItem>
-										))}
-									</SelectGroup>
-								</>);
-							})()}
-						</SelectContent>
-					</Select>
+					<FormatPicker
+						value={preferredFormat}
+						onChange={setPreferredFormat}
+					/>
 					<button
 						type="button"
 						onClick={handleDownload}
@@ -118,7 +118,12 @@ export default function DashboardPage() {
 						className="flex h-12 items-center gap-2 rounded-lg bg-cyan px-6 font-semibold text-cyan-foreground transition-colors hover:bg-cyan/90 disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						{t("dashboard.download")}
-						<ArrowDownToLine className="size-4" />
+						<span className="flex items-center gap-1">
+							<ArrowDownToLine className="size-4" />
+							<kbd className="rounded bg-cyan-foreground/20 px-1.5 py-0.5 font-mono text-[10px]">
+								{isMac ? "⌘" : "Ctrl+"}↵
+							</kbd>
+						</span>
 					</button>
 				</div>
 			</div>

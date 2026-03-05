@@ -25,6 +25,8 @@ export const ja = {
 		queueEmpty:
 			"キューにダウンロードはありません。上にURLを貼り付けて開始してください。",
 		done: "完了",
+		formatSearch: "フォーマットを検索...",
+		noFormatFound: "該当なし",
 	},
 	downloads: {
 		title: "ダウンロード",
