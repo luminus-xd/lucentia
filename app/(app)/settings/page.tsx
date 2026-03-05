@@ -1,6 +1,7 @@
 "use client";
 
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -13,6 +14,9 @@ import {
 	ChevronDown,
 	RefreshCw,
 	Loader2,
+	AlertCircle,
+	FolderOpen,
+	Check,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useSettings } from "@/lib/hooks/useSettings";
@@ -94,9 +98,10 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function SettingsPage() {
-	const { settings, loading, saveSettings, updateField } = useSettings();
+	const { settings, pathStatus, loading, saveSettings, updateField, changeSavePath } = useSettings();
 	const [ytDlpVersion, setYtDlpVersion] = useState<string>("...");
 	const [updating, setUpdating] = useState(false);
+	const [changingPath, setChangingPath] = useState(false);
 
 	useEffect(() => {
 		invoke<string>("get_yt_dlp_version")
@@ -108,6 +113,22 @@ export default function SettingsPage() {
 		await saveSettings(settings);
 		toast.success("Settings saved");
 	};
+
+	const handleChangeSavePath = useCallback(async () => {
+		const selected = await open({ directory: true, multiple: false });
+		if (!selected) return;
+
+		const newPath = `${selected}/Lucentia`;
+		setChangingPath(true);
+		try {
+			await changeSavePath(newPath);
+			toast.success("保存先を変更しました", { description: newPath });
+		} catch (e) {
+			toast.error(`保存先の変更に失敗: ${e}`);
+		} finally {
+			setChangingPath(false);
+		}
+	}, [changeSavePath]);
 
 	const handleUpdateYtDlp = useCallback(async () => {
 		setUpdating(true);
@@ -160,15 +181,57 @@ export default function SettingsPage() {
 
 						<div className="flex flex-col gap-2">
 							<FieldLabel>SAVE LOCATION</FieldLabel>
-							<div className="flex items-center gap-2 bg-[#0F172A] h-11 rounded-lg border border-border px-3">
-								<Folder className="h-4 w-4 text-muted-foreground shrink-0" />
-								<input
-									type="text"
-									value={settings.savePath}
-									onChange={(e) => updateField("savePath", e.target.value)}
-									className="flex-1 bg-transparent text-sm outline-none"
-								/>
+
+							{/* パスが無効な場合の警告バナー */}
+							{pathStatus && !pathStatus.valid && (
+								<div className="flex items-center gap-2.5 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3">
+									<AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
+									<div className="flex flex-col gap-0.5">
+										<span className="text-xs font-medium text-red-400">
+											保存先フォルダが見つかりません
+										</span>
+										<span className="text-[11px] text-red-400/70">
+											フォルダが削除されたか、アクセスできません。新しい保存先を選択してください。
+										</span>
+									</div>
+								</div>
+							)}
+
+							<div className="flex items-center gap-2">
+								<div className="flex flex-1 items-center gap-2 bg-[#0F172A] h-11 rounded-lg border border-border px-3">
+									<Folder className="h-4 w-4 text-muted-foreground shrink-0" />
+									<span className="flex-1 truncate text-sm font-mono text-foreground">
+										{settings.savePath}
+									</span>
+								</div>
+								<button
+									type="button"
+									onClick={handleChangeSavePath}
+									disabled={changingPath}
+									className="shrink-0 flex items-center gap-2 h-11 px-4 rounded-lg border border-border bg-[#0F172A] text-sm font-medium transition-colors hover:bg-[#0F172A]/80 disabled:opacity-50"
+								>
+									{changingPath ? (
+										<Loader2 className="h-4 w-4 animate-spin" />
+									) : (
+										<FolderOpen className="h-4 w-4" />
+									)}
+									変更
+								</button>
 							</div>
+
+							{/* サブディレクトリの状態表示 */}
+							{pathStatus?.valid && (
+								<div className="flex gap-3 text-[11px]">
+									<span className={`flex items-center gap-1 ${pathStatus.hasVideosDir ? "text-cyan" : "text-muted-foreground/50"}`}>
+										<Check className="h-3 w-3" />
+										videos/
+									</span>
+									<span className={`flex items-center gap-1 ${pathStatus.hasAudioDir ? "text-cyan" : "text-muted-foreground/50"}`}>
+										<Check className="h-3 w-3" />
+										audio/
+									</span>
+								</div>
+							)}
 						</div>
 
 						<div className="flex flex-col gap-2">

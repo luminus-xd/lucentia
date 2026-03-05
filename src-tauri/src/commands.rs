@@ -169,24 +169,33 @@ pub async fn download_video(
   let output_filename = format!("{filename_base}.{extension}");
 
   // フォルダパスの検証と安全なパスの構築
-  let base_output_path = if let Some(p) = folder_path {
-    if p.trim().is_empty() {
-      get_default_download_path(&output_filename)?
-    } else {
-      let path = Path::new(&p);
-      if !path.exists() || !path.is_dir() {
-        return Err("指定されたパスが存在しないか、ディレクトリではありません".to_string());
-      }
+  // 優先順位: 引数 folder_path > settings.save_path > OS デフォルト
+  let app_settings = settings::load_settings().unwrap_or_default();
 
-      let full_path = path.join(&output_filename);
-      if !is_safe_path(&full_path) {
-        return Err("安全でないパスが指定されました".to_string());
-      }
-
-      full_path.to_string_lossy().to_string()
+  let resolve_folder = |p: &str| -> Result<String, String> {
+    let path = Path::new(p);
+    if !path.is_dir() {
+      return Err("指定されたパスが存在しないか、ディレクトリではありません".to_string());
     }
-  } else {
-    get_default_download_path(&output_filename)?
+    // audio/video でサブディレクトリを振り分け
+    let subdir = if audio_only { settings::SUBDIR_AUDIO } else { settings::SUBDIR_VIDEOS };
+    let target_dir = path.join(subdir);
+    let target_dir = if target_dir.is_dir() { target_dir } else { path.to_path_buf() };
+
+    let full_path = target_dir.join(&output_filename);
+    if !is_safe_path(&full_path) {
+      return Err("安全でないパスが指定されました".to_string());
+    }
+    Ok(full_path.to_string_lossy().to_string())
+  };
+
+  let base_output_path = match folder_path {
+    Some(ref p) if !p.trim().is_empty() => resolve_folder(p)?,
+    _ if !app_settings.save_path.is_empty() => {
+      resolve_folder(&app_settings.save_path)
+        .unwrap_or_else(|_| get_default_download_path(&output_filename).unwrap_or_default())
+    }
+    _ => get_default_download_path(&output_filename)?,
   };
 
   // ファイル名が存在する場合はUUIDを追加して重複を回避
@@ -255,8 +264,6 @@ pub async fn download_video(
   }
 
   log::info!("Output file: {output_path}");
-
-  let app_settings = settings::load_settings().unwrap_or_default();
 
   let args = build_yt_dlp_args(
     &cleaned_url,
@@ -540,6 +547,29 @@ pub async fn update_yt_dlp() -> Result<String, String> {
 #[tauri::command]
 pub async fn get_yt_dlp_version() -> Result<String, String> {
   crate::downloader::get_yt_dlp_version().await
+}
+
+// ─── 初期化コマンド ────────────────────────────────
+
+#[tauri::command]
+pub fn is_initialized() -> Result<bool, String> {
+  let s = settings::load_settings().unwrap_or_default();
+  Ok(s.initialized)
+}
+
+#[tauri::command]
+pub fn initialize_app(save_path: String) -> Result<(), String> {
+  settings::initialize_app(&save_path)
+}
+
+#[tauri::command]
+pub fn validate_save_path(path: String) -> settings::SavePathStatus {
+  settings::validate_save_path(&path)
+}
+
+#[tauri::command]
+pub fn change_save_path(new_path: String) -> Result<settings::SavePathStatus, String> {
+  settings::change_save_path(&new_path)
 }
 
 // ─── 設定コマンド ─────────────────────────────────

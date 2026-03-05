@@ -11,8 +11,9 @@ mod settings;
 mod utils;
 
 use crate::commands::{
-  clear_history, download_metadata, download_video, get_download_stats, get_history, get_settings,
-  get_yt_dlp_version, save_settings, update_yt_dlp,
+  clear_history, download_metadata, download_video, get_download_stats, get_history,
+  change_save_path, get_settings, get_yt_dlp_version, initialize_app, is_initialized,
+  save_settings, update_yt_dlp, validate_save_path,
 };
 use crate::downloader::{ensure_deno, get_deno_dir, get_yt_dlp_path};
 
@@ -86,6 +87,10 @@ fn main() {
     .invoke_handler(tauri::generate_handler![
       download_video,
       download_metadata,
+      is_initialized,
+      initialize_app,
+      validate_save_path,
+      change_save_path,
       get_settings,
       save_settings,
       get_history,

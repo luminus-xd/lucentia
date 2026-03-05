@@ -4,10 +4,17 @@ use std::path::PathBuf;
 
 use crate::utils::{ensure_app_data_dir, get_download_dir};
 
+/// サブディレクトリ名
+pub const SUBDIR_VIDEOS: &str = "videos";
+pub const SUBDIR_AUDIO: &str = "audio";
+
 /// アプリケーション設定
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
+  /// 初回セットアップ完了フラグ
+  #[serde(default)]
+  pub initialized: bool,
   pub save_path: String,
   pub default_format: String,
   pub default_quality: String,
@@ -21,10 +28,11 @@ pub struct AppSettings {
 impl Default for AppSettings {
   fn default() -> Self {
     let default_save_path = get_download_dir()
-      .map(|p| p.to_string_lossy().to_string())
+      .map(|p| p.to_string_lossy().into_owned())
       .unwrap_or_else(|_| "~/Downloads".to_string());
 
     Self {
+      initialized: false,
       save_path: default_save_path,
       default_format: "mp4".to_string(),
       default_quality: "1080p".to_string(),
@@ -34,6 +42,70 @@ impl Default for AppSettings {
       notif_error: true,
       notif_sound: false,
     }
+  }
+}
+
+/// 指定されたパスにアプリ用ディレクトリ構造を作成する
+pub fn ensure_save_dir_structure(save_path: &str) -> Result<(), String> {
+  let base = std::path::Path::new(save_path);
+
+  let dirs = [
+    base.to_path_buf(),
+    base.join(SUBDIR_VIDEOS),
+    base.join(SUBDIR_AUDIO),
+  ];
+
+  for dir in &dirs {
+    fs::create_dir_all(dir)
+      .map_err(|e| format!("ディレクトリの作成に失敗: {} - {e}", dir.display()))?;
+  }
+
+  Ok(())
+}
+
+/// 保存先パスを更新する共通処理
+fn update_save_path(save_path: &str, set_initialized: bool) -> Result<SavePathStatus, String> {
+  ensure_save_dir_structure(save_path)?;
+
+  let mut settings = load_settings().unwrap_or_default();
+  if set_initialized {
+    settings.initialized = true;
+  }
+  settings.save_path = save_path.to_string();
+  save_settings(&settings)?;
+
+  Ok(validate_save_path(save_path))
+}
+
+/// 初回セットアップ: ディレクトリ構造を作成し、設定を保存する
+pub fn initialize_app(save_path: &str) -> Result<(), String> {
+  update_save_path(save_path, true)?;
+  log::info!("アプリの初期化が完了しました: {save_path}");
+  Ok(())
+}
+
+/// 保存先を変更する
+pub fn change_save_path(new_path: &str) -> Result<SavePathStatus, String> {
+  let status = update_save_path(new_path, false)?;
+  log::info!("保存先を変更しました: {new_path}");
+  Ok(status)
+}
+
+/// 保存先ディレクトリの状態を検証する
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavePathStatus {
+  pub valid: bool,
+  pub has_videos_dir: bool,
+  pub has_audio_dir: bool,
+}
+
+pub fn validate_save_path(path: &str) -> SavePathStatus {
+  let base = std::path::Path::new(path);
+  SavePathStatus {
+    valid: base.is_dir(),
+    has_videos_dir: base.join(SUBDIR_VIDEOS).is_dir(),
+    has_audio_dir: base.join(SUBDIR_AUDIO).is_dir(),
   }
 }
 

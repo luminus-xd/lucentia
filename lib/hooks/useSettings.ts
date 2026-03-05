@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 
 export interface AppSettings {
+	initialized: boolean;
 	savePath: string;
 	defaultFormat: string;
 	defaultQuality: string;
@@ -14,7 +15,14 @@ export interface AppSettings {
 	notifSound: boolean;
 }
 
+export interface SavePathStatus {
+	valid: boolean;
+	hasVideosDir: boolean;
+	hasAudioDir: boolean;
+}
+
 const FALLBACK_SETTINGS: AppSettings = {
+	initialized: false,
 	savePath: "~/Downloads",
 	defaultFormat: "mp4",
 	defaultQuality: "1080p",
@@ -27,11 +35,18 @@ const FALLBACK_SETTINGS: AppSettings = {
 
 export function useSettings() {
 	const [settings, setSettings] = useState<AppSettings>(FALLBACK_SETTINGS);
+	const [pathStatus, setPathStatus] = useState<SavePathStatus | null>(null);
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
 		invoke<AppSettings>("get_settings")
-			.then(setSettings)
+			.then(async (s) => {
+				setSettings(s);
+				const status = await invoke<SavePathStatus>("validate_save_path", {
+					path: s.savePath,
+				});
+				setPathStatus(status);
+			})
 			.catch((e) => console.error("設定の読み込みに失敗:", e))
 			.finally(() => setLoading(false));
 	}, []);
@@ -48,5 +63,11 @@ export function useSettings() {
 		[],
 	);
 
-	return { settings, loading, saveSettings, updateField };
+	const changeSavePath = useCallback(async (newPath: string) => {
+		const status = await invoke<SavePathStatus>("change_save_path", { newPath });
+		setSettings((prev) => ({ ...prev, savePath: newPath }));
+		setPathStatus(status);
+	}, []);
+
+	return { settings, pathStatus, loading, saveSettings, updateField, changeSavePath };
 }

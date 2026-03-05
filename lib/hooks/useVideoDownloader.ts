@@ -64,14 +64,7 @@ function isValidFolderPath(path: string): boolean {
 export function useVideoDownloader(): VideoDownloaderState &
 	VideoDownloaderActions {
 	const [url, setUrlRaw] = useState("");
-	const [folderPath, setFolderPathRaw] = useState(() => {
-		try {
-			const storedPath = localStorage.getItem("folderPath");
-			return storedPath && isValidFolderPath(storedPath) ? storedPath : "";
-		} catch {
-			return "";
-		}
-	});
+	const [folderPath, setFolderPathRaw] = useState("");
 	const [audioOnly, setAudioOnly] = useState(false);
 	const [bestQuality, setBestQuality] = useState(true);
 	const [downloadSubtitles, setDownloadSubtitles] = useState(false);
@@ -100,22 +93,13 @@ export function useVideoDownloader(): VideoDownloaderState &
 		);
 	};
 
-	// フォルダパス入力のラッパー関数（検証を追加・localStorage保存をイベントハンドラに統合）
+	// フォルダパス入力のラッパー関数
 	const setFolderPath = (newPath: string) => {
 		if (!isValidFolderPath(newPath)) {
 			setStatus("無効なフォルダパスです。");
 			return;
 		}
 		setFolderPathRaw(newPath);
-		try {
-			if (newPath) {
-				localStorage.setItem("folderPath", newPath);
-			} else {
-				localStorage.removeItem("folderPath");
-			}
-		} catch {
-			// ストレージアクセス不可の場合は無視
-		}
 	};
 
 	// URL 入力後1.5秒で自動的にメタデータ取得
