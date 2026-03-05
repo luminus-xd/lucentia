@@ -1,27 +1,48 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
 	Search,
 	SlidersHorizontal,
+	ArrowUpDown,
 	Play,
 	FolderOpen,
 	EllipsisVertical,
-	Share2,
 	Trash2,
 	Loader2,
 	FileX,
+	Check,
 } from "lucide-react";
 import { useDownloadedFiles } from "@/lib/hooks/useDownloadedFiles";
+import { useClickOutside } from "@/lib/hooks/useClickOutside";
 import { formatBytes } from "@/lib/hooks/useHistory";
 
 type TabKey = "all" | "video" | "audio";
+type SortKey = "date" | "name" | "size";
+type SortDir = "asc" | "desc";
 
 const TABS: { key: TabKey; label: string }[] = [
 	{ key: "all", label: "All Files" },
 	{ key: "video", label: "Videos" },
 	{ key: "audio", label: "Audio" },
 ];
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+	{ key: "date", label: "Date" },
+	{ key: "name", label: "Name" },
+	{ key: "size", label: "Size" },
+];
+
+/** Set の要素をトグルする（あれば削除、なければ追加） */
+function toggleSetItem<T>(set: Set<T>, item: T): Set<T> {
+	const next = new Set(set);
+	if (next.has(item)) {
+		next.delete(item);
+	} else {
+		next.add(item);
+	}
+	return next;
+}
 
 export default function DownloadsPage() {
 	const { files, loading, deleteFiles, openFile, openInFolder } =
@@ -30,29 +51,77 @@ export default function DownloadsPage() {
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 	const [searchQuery, setSearchQuery] = useState("");
 
-	const filteredFiles = files
-		.filter((f) => activeTab === "all" || f.category === activeTab)
-		.filter((f) =>
-			searchQuery === ""
-				? true
-				: f.title.toLowerCase().includes(searchQuery.toLowerCase()),
-		);
+	// Sort state
+	const [sortKey, setSortKey] = useState<SortKey>("date");
+	const [sortDir, setSortDir] = useState<SortDir>("desc");
+	const [sortOpen, setSortOpen] = useState(false);
+	const sortRef = useRef<HTMLDivElement>(null);
+	useClickOutside(sortRef, () => setSortOpen(false));
+
+	// Filter state
+	const [filterFormats, setFilterFormats] = useState<Set<string>>(new Set());
+	const [filterOpen, setFilterOpen] = useState(false);
+	const filterRef = useRef<HTMLDivElement>(null);
+	useClickOutside(filterRef, () => setFilterOpen(false));
+
+	// Context menu state
+	const [contextMenuId, setContextMenuId] = useState<string | null>(null);
+	const contextRef = useRef<HTMLDivElement>(null);
+	useClickOutside(contextRef, () => setContextMenuId(null));
+
+	// ファイルに含まれる全フォーマットを抽出
+	const availableFormats = useMemo(
+		() => [...new Set(files.map((f) => f.format))].sort(),
+		[files],
+	);
+
+	const filteredFiles = useMemo(() => {
+		const result = files
+			.filter((f) => activeTab === "all" || f.category === activeTab)
+			.filter((f) =>
+				searchQuery === ""
+					? true
+					: f.title.toLowerCase().includes(searchQuery.toLowerCase()),
+			)
+			.filter((f) =>
+				filterFormats.size === 0 ? true : filterFormats.has(f.format),
+			);
+
+		result.sort((a, b) => {
+			let cmp = 0;
+			switch (sortKey) {
+				case "name":
+					cmp = a.title.localeCompare(b.title);
+					break;
+				case "size":
+					cmp = a.size - b.size;
+					break;
+				case "date":
+					cmp = a.modifiedAt.localeCompare(b.modifiedAt);
+					break;
+			}
+			return sortDir === "asc" ? cmp : -cmp;
+		});
+
+		return result;
+	}, [files, activeTab, searchQuery, filterFormats, sortKey, sortDir]);
+
+	// フィルタ条件が変わったら選択をクリア
+	const prevFilterKey = useRef({ activeTab, searchQuery, filterFormats });
+	if (
+		prevFilterKey.current.activeTab !== activeTab ||
+		prevFilterKey.current.searchQuery !== searchQuery ||
+		prevFilterKey.current.filterFormats !== filterFormats
+	) {
+		prevFilterKey.current = { activeTab, searchQuery, filterFormats };
+		if (selectedIds.size > 0) {
+			setSelectedIds(new Set());
+		}
+	}
 
 	const allSelected =
 		filteredFiles.length > 0 &&
 		filteredFiles.every((f) => selectedIds.has(f.id));
-
-	const toggleSelect = (id: string) => {
-		setSelectedIds((prev) => {
-			const next = new Set(prev);
-			if (next.has(id)) {
-				next.delete(id);
-			} else {
-				next.add(id);
-			}
-			return next;
-		});
-	};
 
 	const toggleAll = () => {
 		if (allSelected) {
@@ -86,10 +155,47 @@ export default function DownloadsPage() {
 						Manage your downloaded files
 					</p>
 				</div>
-				<button className="flex items-center gap-2 bg-secondary rounded-lg py-2.5 px-4 text-sm font-medium hover:bg-secondary/80 transition-colors">
-					<SlidersHorizontal className="h-4 w-4" />
-					Sort
-				</button>
+
+				{/* Sort Dropdown */}
+				<div className="relative" ref={sortRef}>
+					<button
+						onClick={() => setSortOpen((v) => !v)}
+						className="flex items-center gap-2 bg-secondary rounded-lg py-2.5 px-4 text-sm font-medium hover:bg-secondary/80 transition-colors"
+					>
+						<ArrowUpDown className="h-4 w-4" />
+						{SORT_OPTIONS.find((o) => o.key === sortKey)?.label}
+					</button>
+					{sortOpen && (
+						<div className="absolute right-0 top-full mt-1 w-48 bg-secondary border border-border rounded-lg p-1 shadow-lg z-50">
+							{SORT_OPTIONS.map((opt) => (
+								<button
+									key={opt.key}
+									onClick={() => {
+										if (sortKey === opt.key) {
+											setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+										} else {
+											setSortKey(opt.key);
+											setSortDir(opt.key === "name" ? "asc" : "desc");
+										}
+										setSortOpen(false);
+									}}
+									className={`flex items-center justify-between w-full rounded-md px-3 py-2 text-sm transition-colors ${
+										sortKey === opt.key
+											? "bg-background text-cyan"
+											: "text-foreground hover:bg-background/50"
+									}`}
+								>
+									{opt.label}
+									{sortKey === opt.key && (
+										<span className="text-[10px] font-mono text-muted-foreground">
+											{sortDir === "asc" ? "ASC" : "DESC"}
+										</span>
+									)}
+								</button>
+							))}
+						</div>
+					)}
+				</div>
 			</div>
 
 			{/* Search Row */}
@@ -104,10 +210,71 @@ export default function DownloadsPage() {
 						className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground/50 focus:outline-none"
 					/>
 				</div>
-				<button className="flex items-center gap-2 bg-secondary rounded-lg py-3 px-4 text-sm text-slate-400 hover:bg-secondary/80 transition-colors">
-					<SlidersHorizontal className="h-4 w-4" />
-					Filter
-				</button>
+
+				{/* Filter Dropdown */}
+				<div className="relative" ref={filterRef}>
+					<button
+						onClick={() => setFilterOpen((v) => !v)}
+						className={`flex items-center gap-2 bg-secondary rounded-lg py-3 px-4 text-sm transition-colors ${
+							filterFormats.size > 0
+								? "text-cyan"
+								: "text-slate-400 hover:bg-secondary/80"
+						}`}
+					>
+						<SlidersHorizontal className="h-4 w-4" />
+						Filter
+						{filterFormats.size > 0 && (
+							<span className="bg-cyan text-cyan-foreground text-[10px] font-bold font-mono rounded px-1.5 py-0.5 leading-none">
+								{filterFormats.size}
+							</span>
+						)}
+					</button>
+					{filterOpen && (
+						<div className="absolute right-0 top-full mt-1 w-48 bg-secondary border border-border rounded-lg p-1 shadow-lg z-50">
+							{availableFormats.length === 0 ? (
+								<p className="px-3 py-2 text-xs text-muted-foreground">
+									No formats available
+								</p>
+							) : (
+								<>
+									{availableFormats.map((fmt) => (
+										<button
+											key={fmt}
+											onClick={() =>
+												setFilterFormats((prev) => toggleSetItem(prev, fmt))
+											}
+											className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm transition-colors hover:bg-background/50"
+										>
+											<div
+												className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+													filterFormats.has(fmt)
+														? "bg-cyan border-cyan"
+														: "border-slate-600"
+												}`}
+											>
+												{filterFormats.has(fmt) && (
+													<Check className="h-3 w-3 text-cyan-foreground" />
+												)}
+											</div>
+											<span className="font-mono text-xs">{fmt}</span>
+										</button>
+									))}
+									{filterFormats.size > 0 && (
+										<>
+											<div className="h-px bg-background my-1" />
+											<button
+												onClick={() => setFilterFormats(new Set())}
+												className="w-full rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-background/50 transition-colors"
+											>
+												Clear all
+											</button>
+										</>
+									)}
+								</>
+							)}
+						</div>
+					)}
+				</div>
 			</div>
 
 			{/* Folder Tabs */}
@@ -171,7 +338,11 @@ export default function DownloadsPage() {
 										<input
 											type="checkbox"
 											checked={selectedIds.has(file.id)}
-											onChange={() => toggleSelect(file.id)}
+											onChange={() =>
+												setSelectedIds((prev) =>
+													toggleSetItem(prev, file.id),
+												)
+											}
 											className="w-4 h-4 rounded border-slate-600 bg-transparent accent-cyan cursor-pointer"
 										/>
 									</div>
@@ -220,9 +391,60 @@ export default function DownloadsPage() {
 										>
 											<FolderOpen className="h-3.5 w-3.5" />
 										</button>
-										<button className="p-1.5 rounded hover:bg-background/50 text-slate-600 transition-colors">
-											<EllipsisVertical className="h-3.5 w-3.5" />
-										</button>
+
+										{/* Context Menu */}
+										<div className="relative" ref={contextMenuId === file.id ? contextRef : undefined}>
+											<button
+												onClick={() =>
+													setContextMenuId((prev) =>
+														prev === file.id ? null : file.id,
+													)
+												}
+												className="p-1.5 rounded hover:bg-background/50 text-slate-600 transition-colors"
+											>
+												<EllipsisVertical className="h-3.5 w-3.5" />
+											</button>
+											{contextMenuId === file.id && (
+												<div className="absolute right-0 top-full mt-1 w-40 bg-secondary border border-border rounded-lg p-1 shadow-lg z-50">
+													<button
+														onClick={() => {
+															openFile(file.path);
+															setContextMenuId(null);
+														}}
+														className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm hover:bg-background/50 transition-colors"
+													>
+														<Play className="h-3.5 w-3.5" />
+														Play
+													</button>
+													<button
+														onClick={() => {
+															openInFolder(file.path);
+															setContextMenuId(null);
+														}}
+														className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm hover:bg-background/50 transition-colors"
+													>
+														<FolderOpen className="h-3.5 w-3.5" />
+														Show in Folder
+													</button>
+													<div className="h-px bg-background my-1" />
+													<button
+														onClick={async () => {
+															setContextMenuId(null);
+															await deleteFiles([file.id]);
+															setSelectedIds((prev) => {
+																const next = new Set(prev);
+																next.delete(file.id);
+																return next;
+															});
+														}}
+														className="flex items-center gap-2 w-full rounded-md px-3 py-2 text-sm text-red-400 hover:bg-background/50 transition-colors"
+													>
+														<Trash2 className="h-3.5 w-3.5" />
+														Delete
+													</button>
+												</div>
+											)}
+										</div>
 									</div>
 								</div>
 							</div>
@@ -243,17 +465,19 @@ export default function DownloadsPage() {
 						</span>
 					</div>
 					<div className="flex items-center gap-2">
-						<button className="flex items-center gap-2 bg-background rounded-md py-2 px-3.5 text-xs font-medium hover:bg-background/80 transition-colors">
+						<button
+							onClick={() => {
+								const firstSelected = files.find((f) => selectedIds.has(f.id));
+								if (firstSelected) openInFolder(firstSelected.path);
+							}}
+							className="flex items-center gap-2 bg-background rounded-md py-2 px-3.5 text-xs font-medium hover:bg-background/80 transition-colors"
+						>
 							<FolderOpen className="h-3.5 w-3.5" />
 							Open Folder
 						</button>
-						<button className="flex items-center gap-2 bg-background rounded-md py-2 px-3.5 text-xs font-medium hover:bg-background/80 transition-colors">
-							<Share2 className="h-3.5 w-3.5" />
-							Share
-						</button>
 						<button
-							onClick={() => {
-								deleteFiles([...selectedIds]);
+							onClick={async () => {
+								await deleteFiles([...selectedIds]);
 								setSelectedIds(new Set());
 							}}
 							className="flex items-center gap-2 bg-background rounded-md py-2 px-3.5 text-xs font-medium text-red-400 hover:bg-background/80 transition-colors"
