@@ -39,6 +39,13 @@
   --color-chart-4: hsl(var(--chart-4));
   --color-chart-5: hsl(var(--chart-5));
 
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-muted: hsl(var(--sidebar-muted));
+
+  --color-cyan: hsl(var(--cyan));
+  --color-cyan-foreground: hsl(var(--cyan-foreground));
+
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
@@ -78,33 +85,43 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
+    --sidebar: 220 14% 10%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-muted: 215 16% 47%;
+    --cyan: 187 92% 57%;
+    --cyan-foreground: 220 47% 7%;
     --radius: 0.5rem;
   }
   .dark {
-    --background: 240 10% 4%;
+    --background: 224 47% 7%;
     --foreground: 0 0% 98%;
-    --card: 240 10% 6%;
+    --card: 222 47% 9%;
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 5%;
+    --popover: 224 47% 8%;
     --popover-foreground: 0 0% 98%;
-    --primary: 240 5% 90%;
-    --primary-foreground: 240 10% 3.9%;
-    --secondary: 240 5% 15%;
+    --primary: 187 92% 57%;
+    --primary-foreground: 220 47% 7%;
+    --secondary: 217 33% 17%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 240 5% 12%;
-    --muted-foreground: 240 5% 65%;
-    --accent: 240 5% 15%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 16% 57%;
+    --accent: 217 33% 17%;
     --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5% 15%;
-    --input: 240 5% 12%;
-    --ring: 240 5% 65%;
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 187 92% 57%;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+    --sidebar: 222 47% 9%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-muted: 215 16% 47%;
+    --cyan: 187 92% 57%;
+    --cyan-foreground: 220 47% 7%;
   }
   * {
     @apply border-border;

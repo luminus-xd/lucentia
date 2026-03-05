@@ -12,9 +12,11 @@
 	"app": {
 		"windows": [
 			{
-				"title": "lucentia",
-				"width": 800,
-				"height": 600,
+				"title": "Lucentia",
+				"width": 1440,
+				"height": 900,
+				"minWidth": 1024,
+				"minHeight": 640,
 				"resizable": true,
 				"fullscreen": false
 			}
