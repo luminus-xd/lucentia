@@ -2,14 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAppVersion } from "@/lib/hooks/useAppVersion";
 import {
 	Sparkles,
 	LayoutDashboard,
 	Download,
 	Clock,
 	Settings,
-	HardDrive,
-	CheckCircle,
 } from "lucide-react";
 
 const navItems = [
@@ -21,6 +20,7 @@ const navItems = [
 
 export function Sidebar() {
 	const pathname = usePathname();
+	const version = useAppVersion();
 
 	return (
 		<aside className="w-60 shrink-0 bg-sidebar flex flex-col h-screen border-r border-border/50">
@@ -61,26 +61,14 @@ export function Sidebar() {
 				{/* スペーサー */}
 				<div className="flex-1" />
 
-				{/* ストレージ情報 */}
-				<div className="flex flex-col gap-2.5 pt-4">
-					<span className="text-xs font-medium text-sidebar-muted uppercase tracking-wider">
-						Storage
-					</span>
-					<div className="flex items-center gap-2 text-sm">
-						<HardDrive className="h-4 w-4 text-sidebar-muted" />
-						<span className="text-sidebar-foreground font-mono text-xs">
-							--
+				{/* アプリバージョン */}
+				{version && (
+					<div className="px-1 pb-1">
+						<span className="text-xs text-sidebar-muted font-mono">
+							Lucentia v{version}
 						</span>
 					</div>
-				</div>
-
-				{/* ffmpeg ステータス */}
-				<div className="flex items-center gap-2 bg-secondary rounded-lg p-3">
-					<CheckCircle className="h-4 w-4 text-emerald-400" />
-					<span className="text-xs text-sidebar-foreground">
-						ffmpeg v7.1.0
-					</span>
-				</div>
+				)}
 			</div>
 		</aside>
 	);

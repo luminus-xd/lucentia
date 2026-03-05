@@ -1,6 +1,5 @@
 "use client";
 
-import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useState } from "react";
@@ -20,6 +19,7 @@ import {
 	Check,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { useAppVersion } from "@/lib/hooks/useAppVersion";
 import { useSettings } from "@/lib/hooks/useSettings";
 import { FORMAT_OPTIONS } from "@/lib/utils";
 const BROWSER_OPTIONS = [
@@ -99,13 +99,12 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 export default function SettingsPage() {
 	const { settings, pathStatus, loading, hasChanges, saveSettings, updateField, changeSavePath, resetSettings } = useSettings();
-	const [appVersion, setAppVersion] = useState<string>("...");
+	const appVersion = useAppVersion();
 	const [ytDlpVersion, setYtDlpVersion] = useState<string>("...");
 	const [updating, setUpdating] = useState(false);
 	const [changingPath, setChangingPath] = useState(false);
 
 	useEffect(() => {
-		getVersion().then((v) => setAppVersion(`v${v}`)).catch(() => setAppVersion("unknown"));
 		invoke<string>("get_yt_dlp_version").then(setYtDlpVersion).catch(() => setYtDlpVersion("not found"));
 	}, []);
 
@@ -370,7 +369,7 @@ export default function SettingsPage() {
 					<div className="bg-card rounded-xl p-6 flex flex-col gap-5">
 						<SectionHeader icon={Info} label="About" />
 
-						<InfoRow label="App Version" value={appVersion} />
+						<InfoRow label="App Version" value={appVersion ? `v${appVersion}` : "..."} />
 						<InfoRow label="yt-dlp Version" value={ytDlpVersion} />
 						<InfoRow label="Runtime" value="Tauri 2" />
 
