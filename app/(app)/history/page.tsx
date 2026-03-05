@@ -25,7 +25,7 @@ export default function HistoryPage() {
 	if (loading) {
 		return (
 			<div className="flex h-full items-center justify-center">
-				<p className="text-[13px] text-[#64748B]">{t("history.loading")}</p>
+				<p className="text-sm text-muted-foreground">{t("history.loading")}</p>
 			</div>
 		);
 	}
@@ -35,8 +35,8 @@ export default function HistoryPage() {
 			{/* Header Row */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-2xl font-semibold leading-tight">{t("history.title")}</h1>
-					<p className="text-[13px] text-[#64748B]">
+					<h1 className="text-[28px] font-semibold leading-tight">{t("history.title")}</h1>
+					<p className="text-sm text-muted-foreground">
 						{t("history.description")}
 					</p>
 				</div>
@@ -77,7 +77,7 @@ export default function HistoryPage() {
 			<div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
 				{history.length === 0 ? (
 					<div className="flex flex-1 items-center justify-center">
-						<p className="text-[13px] text-[#64748B]">
+						<p className="text-sm text-muted-foreground">
 							{t("history.empty")}
 						</p>
 					</div>

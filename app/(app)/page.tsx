@@ -58,7 +58,7 @@ export default function DashboardPage() {
 					<h1 className="text-[28px] font-semibold leading-tight">
 						{t("dashboard.title")}
 					</h1>
-					<p className="text-sm text-[#64748B]">
+					<p className="text-sm text-muted-foreground">
 						{t("dashboard.description")}
 					</p>
 				</div>
@@ -158,7 +158,7 @@ export default function DashboardPage() {
 					</div>
 				) : (
 					<div className="flex flex-1 items-center justify-center rounded-lg bg-[#1E293B] py-16">
-						<p className="text-sm text-[#64748B]">
+						<p className="text-sm text-muted-foreground">
 							{t("dashboard.queueEmpty")}
 						</p>
 					</div>

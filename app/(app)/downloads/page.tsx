@@ -107,12 +107,12 @@ export default function DownloadsPage() {
 	}
 
 	return (
-		<div className="flex flex-col gap-6 py-8 px-10 h-full">
+		<div className="flex flex-col gap-7 py-8 px-10 h-full">
 			{/* Header Row */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-2xl font-semibold">{t("downloads.title")}</h1>
-					<p className="text-[13px] text-muted-foreground">
+					<h1 className="text-[28px] font-semibold leading-tight">{t("downloads.title")}</h1>
+					<p className="text-sm text-muted-foreground">
 						{t("downloads.description")}
 					</p>
 				</div>

@@ -188,11 +188,11 @@ export default function SettingsPage() {
 	}
 
 	return (
-		<div className="flex flex-col gap-7 p-8 px-10">
+		<div className="flex flex-col gap-7 py-8 px-10">
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-[28px] font-semibold">{t("settings.title")}</h1>
+					<h1 className="text-[28px] font-semibold leading-tight">{t("settings.title")}</h1>
 					<p className="text-sm text-muted-foreground">
 						{t("settings.description")}
 					</p>
