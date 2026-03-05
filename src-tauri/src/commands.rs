@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use regex::Regex;
 use serde::Serialize;
 
@@ -13,6 +13,11 @@ use crate::downloader::get_yt_dlp_path;
 use crate::history::{self, HistoryEntry, HistoryGroup, HistoryStatus};
 use crate::settings::{self, AppSettings};
 use crate::utils::{get_default_download_path, is_safe_path, is_valid_url, sanitize_filename};
+
+/// 対応する動画拡張子
+const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "avi", "mov", "flv"];
+/// 対応する音声拡張子
+const AUDIO_EXTENSIONS: &[&str] = &["mp3", "m4a", "opus", "ogg", "wav", "flac", "aac"];
 
 static RE_AMP_TIMESTAMP: LazyLock<Regex> =
   LazyLock::new(|| Regex::new(r"&t=\d+\.?\d*").unwrap());
@@ -611,6 +616,224 @@ pub fn get_download_stats() -> Result<history::DownloadStats, String> {
 #[tauri::command]
 pub fn clear_history() -> Result<(), String> {
   history::clear_all()
+}
+
+// ─── ファイル管理コマンド ──────────────────────────
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadedFile {
+  pub id: String,
+  pub title: String,
+  pub filename: String,
+  pub path: String,
+  pub format: String,
+  pub size: u64,
+  pub category: String,
+  pub modified_at: String,
+}
+
+/// 保存ディレクトリ内のダウンロード済みファイル一覧を取得する
+#[tauri::command]
+pub fn list_downloaded_files() -> Result<Vec<DownloadedFile>, String> {
+  let app_settings = settings::load_settings().unwrap_or_default();
+  let save_path = &app_settings.save_path;
+
+  if save_path.is_empty() {
+    return Ok(Vec::new());
+  }
+
+  let base = Path::new(save_path);
+  if !base.is_dir() {
+    return Ok(Vec::new());
+  }
+
+  let mut files: Vec<DownloadedFile> = Vec::new();
+
+  // videos/ と audio/ の両方をスキャン
+  let scan_targets = [
+    (base.join(settings::SUBDIR_VIDEOS), "video", VIDEO_EXTENSIONS),
+    (base.join(settings::SUBDIR_AUDIO), "audio", AUDIO_EXTENSIONS),
+  ];
+
+  for (dir, category, extensions) in &scan_targets {
+    if !dir.is_dir() {
+      continue;
+    }
+
+    let entries = std::fs::read_dir(dir)
+      .map_err(|e| format!("ディレクトリの読み取りに失敗: {e}"))?;
+
+    for entry in entries.flatten() {
+      let path = entry.path();
+
+      // メタデータ取得（entry.metadata() で1回のシステムコールに統一）
+      let metadata = match entry.metadata() {
+        Ok(m) => m,
+        Err(_) => continue,
+      };
+
+      // ディレクトリはスキップ
+      if !metadata.is_file() {
+        continue;
+      }
+
+      // 隠しファイルはスキップ
+      let filename = match path.file_name().and_then(|n| n.to_str()) {
+        Some(name) if !name.starts_with('.') => name.to_string(),
+        _ => continue,
+      };
+
+      // 拡張子でフィルタ
+      let ext_lower = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+
+      if !extensions.contains(&ext_lower.as_str()) {
+        continue;
+      }
+
+      let size = metadata.len();
+      let modified_at = metadata
+        .modified()
+        .ok()
+        .map(|t| {
+          let datetime: DateTime<Utc> = t.into();
+          datetime.to_rfc3339()
+        })
+        .unwrap_or_default();
+
+      let title = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(&filename)
+        .to_string();
+
+      let format = ext_lower.to_uppercase();
+      let full_path = path.to_string_lossy().to_string();
+
+      files.push(DownloadedFile {
+        id: full_path.clone(),
+        title,
+        filename,
+        path: full_path,
+        format,
+        size,
+        category: (*category).to_string(),
+        modified_at,
+      });
+    }
+  }
+
+  // 更新日時の降順でソート（新しいものが先頭）
+  files.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+
+  Ok(files)
+}
+
+/// 指定されたファイルを削除する
+#[tauri::command]
+pub fn delete_downloaded_files(ids: Vec<String>) -> Result<(), String> {
+  let app_settings = settings::load_settings().unwrap_or_default();
+  let save_path = &app_settings.save_path;
+
+  if save_path.is_empty() {
+    return Err("保存先パスが設定されていません".to_string());
+  }
+
+  let base = std::fs::canonicalize(save_path)
+    .map_err(|e| format!("保存先パスの正規化に失敗: {e}"))?;
+
+  for id in &ids {
+    let file_path = Path::new(id);
+
+    // パスが保存ディレクトリ内にあることを検証
+    let canonical = std::fs::canonicalize(file_path)
+      .map_err(|e| format!("パスの正規化に失敗: {id} - {e}"))?;
+
+    if !canonical.starts_with(&base) {
+      return Err(format!(
+        "安全でないパスが指定されました: {id} は保存ディレクトリ外です"
+      ));
+    }
+
+    match std::fs::remove_file(file_path) {
+      Ok(()) => log::info!("ファイルを削除しました: {id}"),
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+        log::warn!("削除対象のファイルが見つかりません: {id}");
+      }
+      Err(e) => return Err(format!("ファイルの削除に失敗: {id} - {e}")),
+    }
+  }
+
+  Ok(())
+}
+
+/// ファイルをシステムのファイルマネージャで表示する
+#[tauri::command]
+pub fn open_file_in_folder(path: String) -> Result<(), String> {
+  #[cfg(target_os = "macos")]
+  {
+    std::process::Command::new("open")
+      .arg("-R")
+      .arg(&path)
+      .spawn()
+      .map_err(|e| format!("Finderでの表示に失敗: {e}"))?;
+  }
+
+  #[cfg(target_os = "windows")]
+  {
+    std::process::Command::new("explorer")
+      .arg(format!("/select,{path}"))
+      .spawn()
+      .map_err(|e| format!("エクスプローラーでの表示に失敗: {e}"))?;
+  }
+
+  #[cfg(target_os = "linux")]
+  {
+    let file_path = Path::new(&path);
+    let parent = file_path
+      .parent()
+      .ok_or("親ディレクトリの取得に失敗しました")?;
+    std::process::Command::new("xdg-open")
+      .arg(parent)
+      .spawn()
+      .map_err(|e| format!("ファイルマネージャでの表示に失敗: {e}"))?;
+  }
+
+  Ok(())
+}
+
+/// ファイルをデフォルトのアプリケーションで開く
+#[tauri::command]
+pub fn open_file(path: String) -> Result<(), String> {
+  #[cfg(target_os = "macos")]
+  {
+    std::process::Command::new("open")
+      .arg(&path)
+      .spawn()
+      .map_err(|e| format!("ファイルを開けませんでした: {e}"))?;
+  }
+
+  #[cfg(target_os = "windows")]
+  {
+    std::process::Command::new("cmd")
+      .args(["/C", "start", "", &path])
+      .spawn()
+      .map_err(|e| format!("ファイルを開けませんでした: {e}"))?;
+  }
+
+  #[cfg(target_os = "linux")]
+  {
+    std::process::Command::new("xdg-open")
+      .arg(&path)
+      .spawn()
+      .map_err(|e| format!("ファイルを開けませんでした: {e}"))?;
+  }
+
+  Ok(())
 }
 
 /// タイトルを取得する補助関数

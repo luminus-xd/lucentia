@@ -9,8 +9,9 @@ pub mod utils;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   use crate::commands::{
-    clear_history, download_metadata, download_video, get_download_stats, get_history,
-    change_save_path, get_settings, get_yt_dlp_version, initialize_app, is_initialized,
+    clear_history, delete_downloaded_files, download_metadata, download_video,
+    get_download_stats, get_history, change_save_path, get_settings, get_yt_dlp_version,
+    initialize_app, is_initialized, list_downloaded_files, open_file, open_file_in_folder,
     save_settings, update_yt_dlp, validate_save_path,
   };
 
@@ -30,6 +31,10 @@ pub fn run() {
       clear_history,
       update_yt_dlp,
       get_yt_dlp_version,
+      list_downloaded_files,
+      delete_downloaded_files,
+      open_file,
+      open_file_in_folder,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

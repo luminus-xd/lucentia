@@ -9,94 +9,34 @@ import {
 	EllipsisVertical,
 	Share2,
 	Trash2,
+	Loader2,
+	FileX,
 } from "lucide-react";
+import { useDownloadedFiles } from "@/lib/hooks/useDownloadedFiles";
+import { formatBytes } from "@/lib/hooks/useHistory";
 
-type FileItem = {
-	id: string;
-	title: string;
-	channel: string;
-	format: string;
-	size: string;
-	date: string;
-	thumbnail?: string;
-	category: "video" | "audio" | "playlist";
-};
-
-const DUMMY_FILES: FileItem[] = [
-	{
-		id: "1",
-		title: "React Tutorial - Full Course 2024",
-		channel: "Fireship",
-		format: "MP4 1080p",
-		size: "1.2 GB",
-		date: "Mar 02, 2026",
-		category: "video",
-	},
-	{
-		id: "2",
-		title: "Lo-Fi Beats - Study Mix 2026",
-		channel: "ChilledCow",
-		format: "MP3 320k",
-		size: "84.2 MB",
-		date: "Feb 28, 2026",
-		category: "audio",
-	},
-	{
-		id: "3",
-		title: "Next.js Deep Dive - App Router",
-		channel: "Vercel",
-		format: "MP4 1080p",
-		size: "856 MB",
-		date: "Feb 25, 2026",
-		category: "video",
-	},
-	{
-		id: "4",
-		title: "Python ML Course - Neural Networks",
-		channel: "sentdex",
-		format: "MP4 720p",
-		size: "1.4 GB",
-		date: "Feb 22, 2026",
-		category: "video",
-	},
-	{
-		id: "5",
-		title: "CSS Masterclass - Modern Layouts",
-		channel: "Kevin Powell",
-		format: "MKV 1080p",
-		size: "2.1 GB",
-		date: "Feb 18, 2026",
-		category: "video",
-	},
-	{
-		id: "6",
-		title: "TypeScript Handbook - Advanced Types",
-		channel: "Matt Pocock",
-		format: "MP4 1080p",
-		size: "1.0 GB",
-		date: "Feb 15, 2026",
-		category: "video",
-	},
-];
-
-type TabKey = "all" | "video" | "audio" | "playlist";
+type TabKey = "all" | "video" | "audio";
 
 const TABS: { key: TabKey; label: string }[] = [
 	{ key: "all", label: "All Files" },
 	{ key: "video", label: "Videos" },
 	{ key: "audio", label: "Audio" },
-	{ key: "playlist", label: "Playlists" },
 ];
 
 export default function DownloadsPage() {
+	const { files, loading, deleteFiles, openFile, openInFolder } =
+		useDownloadedFiles();
 	const [activeTab, setActiveTab] = useState<TabKey>("all");
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 	const [searchQuery, setSearchQuery] = useState("");
 
-	const filteredFiles =
-		activeTab === "all"
-			? DUMMY_FILES
-			: DUMMY_FILES.filter((f) => f.category === activeTab);
+	const filteredFiles = files
+		.filter((f) => activeTab === "all" || f.category === activeTab)
+		.filter((f) =>
+			searchQuery === ""
+				? true
+				: f.title.toLowerCase().includes(searchQuery.toLowerCase()),
+		);
 
 	const allSelected =
 		filteredFiles.length > 0 &&
@@ -124,8 +64,17 @@ export default function DownloadsPage() {
 
 	const tabCount = (key: TabKey) =>
 		key === "all"
-			? DUMMY_FILES.length
-			: DUMMY_FILES.filter((f) => f.category === key).length;
+			? files.length
+			: files.filter((f) => f.category === key).length;
+
+	if (loading) {
+		return (
+			<div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+				<Loader2 className="h-6 w-6 animate-spin" />
+				<p className="text-sm">Loading files...</p>
+			</div>
+		);
+	}
 
 	return (
 		<div className="flex flex-col gap-6 py-8 px-10 h-full">
@@ -208,64 +157,77 @@ export default function DownloadsPage() {
 
 				{/* Table Body */}
 				<div className="flex-1 overflow-y-auto">
-					{filteredFiles.map((file, index) => (
-						<div key={file.id}>
-							{index > 0 && <div className="h-px bg-background" />}
-							<div className="flex items-center gap-4 px-5 py-3 hover:bg-background/30 transition-colors">
-								<div className="w-5 h-5 flex items-center justify-center">
-									<input
-										type="checkbox"
-										checked={selectedIds.has(file.id)}
-										onChange={() => toggleSelect(file.id)}
-										className="w-4 h-4 rounded border-slate-600 bg-transparent accent-cyan cursor-pointer"
-									/>
-								</div>
+					{filteredFiles.length === 0 ? (
+						<div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
+							<FileX className="h-10 w-10 text-muted-foreground/40" />
+							<p className="text-sm">No files found</p>
+						</div>
+					) : (
+						filteredFiles.map((file, index) => (
+							<div key={file.id}>
+								{index > 0 && <div className="h-px bg-background" />}
+								<div className="flex items-center gap-4 px-5 py-3 hover:bg-background/30 transition-colors">
+									<div className="w-5 h-5 flex items-center justify-center">
+										<input
+											type="checkbox"
+											checked={selectedIds.has(file.id)}
+											onChange={() => toggleSelect(file.id)}
+											className="w-4 h-4 rounded border-slate-600 bg-transparent accent-cyan cursor-pointer"
+										/>
+									</div>
 
-								{/* File Cell */}
-								<div className="flex-1 flex items-center gap-3 min-w-0">
-									<div className="w-16 h-10 rounded-md bg-background/60 flex-shrink-0" />
-									<div className="min-w-0">
-										<p className="text-sm font-medium truncate">
-											{file.title}
-										</p>
-										<p className="text-[11px] font-mono text-muted-foreground">
-											{file.channel}
-										</p>
+									{/* File Cell */}
+									<div className="flex-1 flex items-center gap-3 min-w-0">
+										<div className="w-16 h-10 rounded-md bg-background/60 flex-shrink-0" />
+										<div className="min-w-0">
+											<p className="text-sm font-medium truncate">
+												{file.title}
+											</p>
+											<p className="text-[11px] font-mono text-muted-foreground truncate">
+												{file.filename}
+											</p>
+										</div>
+									</div>
+
+									{/* Format Badge */}
+									<div className="w-[100px]">
+										<span className="inline-block bg-cyan text-cyan-foreground text-[10px] font-bold font-mono rounded px-2 py-0.5 leading-tight">
+											{file.format}
+										</span>
+									</div>
+
+									{/* Size */}
+									<div className="w-[80px] text-xs font-mono text-slate-400">
+										{formatBytes(file.size)}
+									</div>
+
+									{/* Date */}
+									<div className="w-[100px] text-[11px] font-mono text-muted-foreground">
+										{new Date(file.modifiedAt).toLocaleDateString()}
+									</div>
+
+									{/* Actions */}
+									<div className="w-[80px] flex items-center gap-1">
+										<button
+											onClick={() => openFile(file.path)}
+											className="p-1.5 rounded hover:bg-background/50 text-slate-400 transition-colors"
+										>
+											<Play className="h-3.5 w-3.5" />
+										</button>
+										<button
+											onClick={() => openInFolder(file.path)}
+											className="p-1.5 rounded hover:bg-background/50 text-slate-400 transition-colors"
+										>
+											<FolderOpen className="h-3.5 w-3.5" />
+										</button>
+										<button className="p-1.5 rounded hover:bg-background/50 text-slate-600 transition-colors">
+											<EllipsisVertical className="h-3.5 w-3.5" />
+										</button>
 									</div>
 								</div>
-
-								{/* Format Badge */}
-								<div className="w-[100px]">
-									<span className="inline-block bg-cyan text-cyan-foreground text-[10px] font-bold font-mono rounded px-2 py-0.5 leading-tight">
-										{file.format}
-									</span>
-								</div>
-
-								{/* Size */}
-								<div className="w-[80px] text-xs font-mono text-slate-400">
-									{file.size}
-								</div>
-
-								{/* Date */}
-								<div className="w-[100px] text-[11px] font-mono text-muted-foreground">
-									{file.date}
-								</div>
-
-								{/* Actions */}
-								<div className="w-[80px] flex items-center gap-1">
-									<button className="p-1.5 rounded hover:bg-background/50 text-slate-400 transition-colors">
-										<Play className="h-3.5 w-3.5" />
-									</button>
-									<button className="p-1.5 rounded hover:bg-background/50 text-slate-400 transition-colors">
-										<FolderOpen className="h-3.5 w-3.5" />
-									</button>
-									<button className="p-1.5 rounded hover:bg-background/50 text-slate-600 transition-colors">
-										<EllipsisVertical className="h-3.5 w-3.5" />
-									</button>
-								</div>
 							</div>
-						</div>
-					))}
+						))
+					)}
 				</div>
 			</div>
 
@@ -289,7 +251,13 @@ export default function DownloadsPage() {
 							<Share2 className="h-3.5 w-3.5" />
 							Share
 						</button>
-						<button className="flex items-center gap-2 bg-background rounded-md py-2 px-3.5 text-xs font-medium text-red-400 hover:bg-background/80 transition-colors">
+						<button
+							onClick={() => {
+								deleteFiles([...selectedIds]);
+								setSelectedIds(new Set());
+							}}
+							className="flex items-center gap-2 bg-background rounded-md py-2 px-3.5 text-xs font-medium text-red-400 hover:bg-background/80 transition-colors"
+						>
 							<Trash2 className="h-3.5 w-3.5" />
 							Delete
 						</button>
