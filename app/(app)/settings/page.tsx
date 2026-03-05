@@ -34,23 +34,27 @@ const BROWSER_OPTIONS = [
 	{ value: "brave", label: "Brave" },
 ] as const;
 
+type SectionHeaderVariant = "default" | "muted";
+
+const sectionHeaderStyles: Record<SectionHeaderVariant, { icon: string; heading: string }> = {
+	default: { icon: "text-cyan", heading: "" },
+	muted: { icon: "text-muted-foreground", heading: "text-muted-foreground" },
+};
+
 function SectionHeader({
 	icon: Icon,
 	label,
-	muted = false,
+	variant = "default",
 }: {
 	icon: React.ComponentType<{ className?: string }>;
 	label: string;
-	muted?: boolean;
+	variant?: SectionHeaderVariant;
 }) {
+	const styles = sectionHeaderStyles[variant];
 	return (
 		<div className="flex items-center gap-2.5">
-			<Icon
-				className={`h-5 w-5 ${muted ? "text-muted-foreground" : "text-cyan"}`}
-			/>
-			<h2
-				className={`text-base font-semibold ${muted ? "text-muted-foreground" : ""}`}
-			>
+			<Icon className={`h-5 w-5 ${styles.icon}`} />
+			<h2 className={`text-base font-semibold ${styles.heading}`}>
 				{label}
 			</h2>
 		</div>
@@ -446,7 +450,7 @@ export default function SettingsPage() {
 
 					{/* Danger Zone */}
 					<div className="bg-card rounded-xl p-6 flex flex-col gap-4 border border-[#47556933]">
-						<SectionHeader icon={TriangleAlert} label={t("settings.dangerZone")} muted />
+						<SectionHeader icon={TriangleAlert} label={t("settings.dangerZone")} variant="muted" />
 
 						<div className="flex items-center justify-between">
 							<div className="flex flex-col gap-0.5">

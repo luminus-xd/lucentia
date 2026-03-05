@@ -12,17 +12,18 @@ import { useSettings } from "@/lib/hooks/useSettings";
 import { useVideoDownloader } from "@/lib/hooks/useVideoDownloader";
 import { ensureNotificationPermission } from "@/lib/notifications";
 import { useTranslation } from "@/lib/i18n";
-import { FORMAT_OPTIONS, getFormatLabel } from "@/lib/utils";
+import { FORMAT_OPTIONS } from "@/lib/utils";
 import {
 	ArrowDownToLine,
-	Check,
-	HardDrive,
 	Link,
 	ListOrdered,
 	TrendingUp,
 	Trophy,
+	HardDrive,
 } from "lucide-react";
 import { useEffect } from "react";
+import { StatsCard } from "./_components/StatsCard";
+import { DownloadQueueItem } from "./_components/DownloadQueueItem";
 
 export default function DashboardPage() {
 	const { settings } = useSettings();
@@ -41,7 +42,6 @@ export default function DashboardPage() {
 	const { stats: dlStats, successRate } = useHistory();
 	const { t } = useTranslation();
 
-	// 通知がONの場合、権限をリクエストする
 	useEffect(() => {
 		if (settings.notifComplete || settings.notifError) {
 			ensureNotificationPermission();
@@ -49,37 +49,6 @@ export default function DashboardPage() {
 	}, [settings.notifComplete, settings.notifError]);
 
 	const activeCount = downloading ? 1 : 0;
-
-	const stats = [
-		{
-			label: t("dashboard.totalDownloads"),
-			value: dlStats.monthCount.toLocaleString(),
-			sub: t("dashboard.todayCount", { count: dlStats.todayCount }),
-			subColor: "text-cyan",
-			icon: <TrendingUp className="size-4 text-cyan" />,
-		},
-		{
-			label: t("dashboard.storageUsed"),
-			value: formatBytes(dlStats.monthSize),
-			sub: t("dashboard.thisMonth"),
-			subColor: "text-[#64748B]",
-			icon: <HardDrive className="size-4 text-[#64748B]" />,
-		},
-		{
-			label: t("dashboard.activeQueue"),
-			value: String(activeCount),
-			sub: t("dashboard.processingNow"),
-			subColor: "text-cyan",
-			icon: <ListOrdered className="size-4 text-cyan" />,
-		},
-		{
-			label: t("dashboard.successRate"),
-			value: successRate != null ? `${successRate}%` : "--",
-			sub: t("dashboard.last30Days"),
-			subColor: "text-[#64748B]",
-			icon: <Trophy className="size-4 text-[#64748B]" />,
-		},
-	];
 
 	return (
 		<div className="flex flex-col gap-7 py-8 px-10">
@@ -137,23 +106,34 @@ export default function DashboardPage() {
 
 			{/* Stats Row */}
 			<div className="grid grid-cols-4 gap-4">
-				{stats.map((stat) => (
-					<div
-						key={stat.label}
-						className="flex flex-col gap-3 rounded-xl bg-[#1E293B] p-5"
-					>
-						<div className="flex items-center justify-between">
-							<span className="text-[11px] font-semibold tracking-[2px] text-[#64748B] uppercase">
-								{stat.label}
-							</span>
-							{stat.icon}
-						</div>
-						<span className="font-mono text-[32px] font-bold leading-none">
-							{stat.value}
-						</span>
-						<span className={`text-xs ${stat.subColor}`}>{stat.sub}</span>
-					</div>
-				))}
+				<StatsCard
+					label={t("dashboard.totalDownloads")}
+					value={dlStats.monthCount.toLocaleString()}
+					sub={t("dashboard.todayCount", { count: dlStats.todayCount })}
+					subColor="cyan"
+					icon={<TrendingUp className="size-4 text-cyan" />}
+				/>
+				<StatsCard
+					label={t("dashboard.storageUsed")}
+					value={formatBytes(dlStats.monthSize)}
+					sub={t("dashboard.thisMonth")}
+					subColor="muted"
+					icon={<HardDrive className="size-4 text-[#64748B]" />}
+				/>
+				<StatsCard
+					label={t("dashboard.activeQueue")}
+					value={String(activeCount)}
+					sub={t("dashboard.processingNow")}
+					subColor="cyan"
+					icon={<ListOrdered className="size-4 text-cyan" />}
+				/>
+				<StatsCard
+					label={t("dashboard.successRate")}
+					value={successRate != null ? `${successRate}%` : "--"}
+					sub={t("dashboard.last30Days")}
+					subColor="muted"
+					icon={<Trophy className="size-4 text-[#64748B]" />}
+				/>
 			</div>
 
 			{/* Download Queue Section */}
@@ -167,70 +147,20 @@ export default function DashboardPage() {
 					</span>
 				</div>
 
-				{!metadata ? (
+				{metadata ? (
+					<div className="flex flex-col gap-2 overflow-y-auto">
+						<DownloadQueueItem
+							metadata={metadata}
+							downloading={downloading}
+							progress={progress}
+							formatKey={preferredFormat}
+						/>
+					</div>
+				) : (
 					<div className="flex flex-1 items-center justify-center rounded-lg bg-[#1E293B] py-16">
 						<p className="text-sm text-[#64748B]">
 							{t("dashboard.queueEmpty")}
 						</p>
-					</div>
-				) : (
-					<div className="flex flex-col gap-2 overflow-y-auto">
-						<div className="flex items-center gap-3.5 rounded-lg bg-[#1E293B] px-4 py-3.5">
-							{metadata.thumbnail ? (
-								<img
-									src={metadata.thumbnail}
-									alt={metadata.title}
-									className="h-10 w-16 shrink-0 rounded-md object-cover"
-								/>
-							) : (
-								<div className="h-10 w-16 shrink-0 rounded-md bg-[#0F172A]" />
-							)}
-
-							<div className="flex min-w-0 flex-1 flex-col gap-1.5">
-								<div className="flex items-center justify-between gap-3">
-									<span className="truncate text-sm font-medium">
-										{metadata.title}
-									</span>
-									{downloading ? (
-										<span className="shrink-0 font-mono text-xs font-bold text-cyan">
-											{progress.percent.toFixed(0)}%
-										</span>
-									) : (
-										<span className="flex shrink-0 items-center gap-1 text-xs font-medium text-cyan">
-											<Check className="size-3" />
-											{t("dashboard.done")}
-										</span>
-									)}
-								</div>
-
-								{downloading && (
-									<div className="h-1 w-full overflow-hidden rounded-full bg-[#0F172A]">
-										<div
-											className="h-full rounded-full bg-cyan transition-all duration-300"
-											style={{ width: `${progress.percent}%` }}
-										/>
-									</div>
-								)}
-
-								<div className="flex items-center gap-3 font-mono text-[11px] text-[#64748B]">
-									<span className="text-[#94A3B8]">
-										{getFormatLabel(preferredFormat)}
-									</span>
-									{downloading && progress.speed && (
-										<>
-											<span className="text-[#475569]">&middot;</span>
-											<span>{progress.speed}</span>
-										</>
-									)}
-									{downloading && progress.eta && (
-										<>
-											<span className="text-[#475569]">&middot;</span>
-											<span>ETA {progress.eta}</span>
-										</>
-									)}
-								</div>
-							</div>
-						</div>
 					</div>
 				)}
 			</div>

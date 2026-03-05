@@ -1,7 +1,7 @@
 "use client";
 
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 export interface AppSettings {
 	initialized: boolean;
@@ -39,7 +39,10 @@ export function useSettings() {
 	const [pathStatus, setPathStatus] = useState<SavePathStatus | null>(null);
 	const [loading, setLoading] = useState(true);
 
-	const hasChanges = JSON.stringify(settings) !== JSON.stringify(savedSettings);
+	const hasChanges = useMemo(
+		() => JSON.stringify(settings) !== JSON.stringify(savedSettings),
+		[settings, savedSettings],
+	);
 
 	useEffect(() => {
 		invoke<AppSettings>("get_settings")

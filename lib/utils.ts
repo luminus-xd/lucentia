@@ -18,3 +18,14 @@ export type VideoFormat = keyof typeof FORMAT_OPTIONS;
 export function getFormatLabel(format: string): string {
 	return FORMAT_OPTIONS[format as VideoFormat] ?? "MP4";
 }
+
+/** Set の要素をトグルする（あれば削除、なければ追加） */
+export function toggleSetItem<T>(set: Set<T>, item: T): Set<T> {
+	const next = new Set(set);
+	if (next.has(item)) {
+		next.delete(item);
+	} else {
+		next.add(item);
+	}
+	return next;
+}
