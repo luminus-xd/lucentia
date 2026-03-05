@@ -14,7 +14,6 @@ import { ensureNotificationPermission } from "@/lib/notifications";
 import { FORMAT_OPTIONS, getFormatLabel } from "@/lib/utils";
 import {
 	ArrowDownToLine,
-	Bell,
 	Check,
 	HardDrive,
 	Link,
@@ -92,12 +91,6 @@ export default function DashboardPage() {
 						Download and manage your YouTube videos
 					</p>
 				</div>
-				<button
-					type="button"
-					className="flex size-10 items-center justify-center rounded-lg bg-[#1E293B] transition-colors hover:bg-[#1E293B]/80"
-				>
-					<Bell className="size-[18px] text-[#94A3B8]" />
-				</button>
 			</div>
 
 			{/* URL Input Section */}
