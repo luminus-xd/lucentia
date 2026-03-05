@@ -5,17 +5,6 @@ const nextConfig: NextConfig = {
 	output: "export",
 	reactStrictMode: true,
 	images: {
-		domains: [
-			"i.ytimg.com",
-			"img.youtube.com",
-			"static-cdn.jtvnw.net",
-			"vod-secure.twitch.tv",
-			"i0.hdslb.com",
-			"i1.hdslb.com",
-			"i2.hdslb.com",
-			"nicovideo.cdn.nimg.jp",
-			"img.cdn.nimg.jp",
-		],
 		remotePatterns: [
 			{
 				protocol: "https",

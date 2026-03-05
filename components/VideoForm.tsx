@@ -227,7 +227,7 @@ export function VideoForm({
 			)}
 
 			{metadata && (
-				<Card className="overflow-hidden border border-border/50 bg-background/50 backdrop-blur-sm">
+				<Card className="overflow-hidden border border-border/50 bg-background/50 backdrop-blur-xs">
 					<div className="relative aspect-video w-full overflow-hidden">
 						{metadata.thumbnail ? (
 							<Image
