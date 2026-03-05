@@ -54,19 +54,19 @@ interface I18nContextValue {
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
-function getInitialLocale(): Locale {
-	if (typeof window === "undefined") return DEFAULT_LOCALE;
-	const stored = localStorage.getItem(STORAGE_KEY);
-	if (stored === "ja" || stored === "en") return stored;
-	return DEFAULT_LOCALE;
-}
-
 export function I18nProvider({ children }: { children: ReactNode }) {
-	const [locale, setLocaleState] = useState<Locale>(getInitialLocale);
+	const [locale, setLocaleState] = useState<Locale>(DEFAULT_LOCALE);
 
 	const setLocale = useCallback((newLocale: Locale) => {
 		setLocaleState(newLocale);
 		localStorage.setItem(STORAGE_KEY, newLocale);
+	}, []);
+
+	useEffect(() => {
+		const stored = localStorage.getItem(STORAGE_KEY);
+		if (stored === "ja" || stored === "en") {
+			setLocaleState(stored);
+		}
 	}, []);
 
 	useEffect(() => {

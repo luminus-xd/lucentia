@@ -128,5 +128,6 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-zen-maru-gothic), system-ui, sans-serif;
   }
 }
