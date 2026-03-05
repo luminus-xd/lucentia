@@ -43,6 +43,10 @@ next-env.d.ts
 # cline
 .clinerules
 
+# claude code
+.claude/
+CLAUDE.md
+
 # Tauri
 src-tauri/gen
 create-release.sh
