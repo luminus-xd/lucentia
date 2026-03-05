@@ -28,6 +28,7 @@ export interface VideoDownloaderState {
 	preferredFormat: string;
 	customFilename: string;
 	metadata: VideoMetadata | null;
+	fetchingMetadata: boolean;
 	status: string;
 	downloading: boolean;
 	progress: DownloadProgress;
@@ -85,6 +86,7 @@ export function useVideoDownloader(
 	const audioOnly = isAudioFormat(preferredFormat);
 	const [customFilename, setCustomFilename] = useState("");
 	const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
+	const [fetchingMetadata, setFetchingMetadata] = useState(false);
 	const [status, setStatus] = useState("");
 	const [downloading, setDownloading] = useState(false);
 	const [progress, setProgress] = useState<DownloadProgress>({
@@ -133,16 +135,19 @@ export function useVideoDownloader(
 	useEffect(() => {
 		if (!url) {
 			setMetadata(null);
+			setFetchingMetadata(false);
 			return;
 		}
 
 		// URLが無効な場合は処理しない
 		if (!isValidUrl(url)) {
+			setFetchingMetadata(false);
 			return;
 		}
 
 		if (debounceTimer.current) clearTimeout(debounceTimer.current);
 		debounceTimer.current = setTimeout(async () => {
+			setFetchingMetadata(true);
 			try {
 				const result = await invoke<VideoMetadata>("download_metadata", {
 					url,
@@ -151,11 +156,14 @@ export function useVideoDownloader(
 				setStatus(tRef.current("status.metadataFetched"));
 			} catch (error) {
 				setStatus(tRef.current("status.metadataError", { error: String(error) }));
+			} finally {
+				setFetchingMetadata(false);
 			}
 		}, 1500);
 
 		return () => {
 			if (debounceTimer.current) clearTimeout(debounceTimer.current);
+			setFetchingMetadata(false);
 		};
 	}, [url]);
 
@@ -260,6 +268,7 @@ export function useVideoDownloader(
 		preferredFormat,
 		customFilename,
 		metadata,
+		fetchingMetadata,
 		status,
 		downloading,
 		progress,

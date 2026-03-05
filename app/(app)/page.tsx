@@ -9,6 +9,7 @@ import {
 	ArrowDownToLine,
 	Link,
 	ListOrdered,
+	Loader2,
 	TrendingUp,
 	Trophy,
 	HardDrive,
@@ -24,6 +25,7 @@ export default function DashboardPage() {
 	const {
 		url,
 		metadata,
+		fetchingMetadata,
 		downloading,
 		progress,
 		preferredFormat,
@@ -117,13 +119,22 @@ export default function DashboardPage() {
 						disabled={downloading || !url}
 						className="flex h-12 items-center gap-2 rounded-lg bg-cyan px-6 font-semibold text-cyan-foreground transition-colors hover:bg-cyan/90 disabled:cursor-not-allowed disabled:opacity-50"
 					>
-						{t("dashboard.download")}
-						<span className="flex items-center gap-1">
-							<ArrowDownToLine className="size-4" />
-							<kbd className="rounded bg-cyan-foreground/20 px-1.5 py-0.5 font-mono text-[10px]">
-								{isMac ? "⌘" : "Ctrl+"}↵
-							</kbd>
-						</span>
+						{downloading ? (
+							<>
+								<Loader2 className="size-4 animate-spin" />
+								{t("status.downloading")}
+							</>
+						) : (
+							<>
+								{t("dashboard.download")}
+								<span className="flex items-center gap-1">
+									<ArrowDownToLine className="size-4" />
+									<kbd className="rounded bg-cyan-foreground/20 px-1.5 py-0.5 font-mono text-[10px]">
+										{isMac ? "⌘" : "Ctrl+"}↵
+									</kbd>
+								</span>
+							</>
+						)}
 					</button>
 				</div>
 			</div>
@@ -167,7 +178,7 @@ export default function DashboardPage() {
 						{t("dashboard.downloadQueue")}
 					</span>
 					<span className="rounded bg-cyan px-2.5 py-1 text-[11px] font-bold text-cyan-foreground">
-						{metadata ? 1 : 0}
+						{metadata || fetchingMetadata ? 1 : 0}
 					</span>
 				</div>
 
@@ -179,6 +190,14 @@ export default function DashboardPage() {
 							progress={progress}
 							formatKey={preferredFormat}
 						/>
+					</div>
+				) : fetchingMetadata ? (
+					<div className="flex items-center gap-4 rounded-lg bg-[#1E293B] p-4">
+						<div className="size-16 animate-pulse rounded bg-[#334155]" />
+						<div className="flex flex-1 flex-col gap-2">
+							<div className="h-4 w-3/4 animate-pulse rounded bg-[#334155]" />
+							<div className="h-3 w-1/2 animate-pulse rounded bg-[#334155]" />
+						</div>
 					</div>
 				) : (
 					<div className="flex flex-1 items-center justify-center rounded-lg bg-[#1E293B] py-16">

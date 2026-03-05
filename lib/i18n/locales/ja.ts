@@ -13,6 +13,7 @@ export const ja = {
 		description: "動画のダウンロードと管理",
 		pasteUrl: "URLを貼り付け",
 		download: "ダウンロード",
+		downloading: "ダウンロード中...",
 		totalDownloads: "合計ダウンロード数",
 		todayCount: "+{{count}} 今日",
 		storageUsed: "ストレージ使用量",
