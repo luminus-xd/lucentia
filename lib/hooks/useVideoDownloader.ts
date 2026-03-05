@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 export interface VideoMetadata {
 	title: string;
@@ -19,6 +21,8 @@ export interface VideoDownloaderState {
 	status: string;
 	downloading: boolean;
 	progress: number;
+	showCompletedProgress: boolean;
+	statusType: "idle" | "success" | "error";
 }
 
 export interface VideoDownloaderActions {
@@ -77,6 +81,10 @@ export function useVideoDownloader(): VideoDownloaderState &
 	const [status, setStatus] = useState("");
 	const [downloading, setDownloading] = useState(false);
 	const [progress, setProgress] = useState(0);
+	const [showCompletedProgress, setShowCompletedProgress] = useState(false);
+	const [statusType, setStatusType] = useState<"idle" | "success" | "error">(
+		"idle",
+	);
 
 	const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -140,24 +148,23 @@ export function useVideoDownloader(): VideoDownloaderState &
 		};
 	}, [url]);
 
-	// ダウンロード進捗のシミュレーション
+	// Tauri イベントリスナーでダウンロード進捗を取得
 	useEffect(() => {
-		if (downloading) {
-			const interval = setInterval(() => {
-				setProgress((prev) => {
-					const newProgress = prev + Math.random() * 10;
-					// 90%で止めて、実際の完了を待つ
-					return newProgress >= 90 ? 90 : newProgress;
-				});
-			}, 500);
+		if (!downloading) return;
 
-			return () => {
-				clearInterval(interval);
-			};
-		}
+		let unlisten: UnlistenFn | undefined;
+		listen<{ percent: number }>("download-progress", (event) => {
+			setProgress(event.payload.percent);
+		}).then((fn) => {
+			unlisten = fn;
+		});
+
+		return () => {
+			unlisten?.();
+		};
 	}, [downloading]);
 
-	const handleDownload = async () => {
+	const handleDownload = useCallback(async () => {
 		if (!url) {
 			setStatus("動画URLを入力してください");
 			return;
@@ -178,12 +185,12 @@ export function useVideoDownloader(): VideoDownloaderState &
 		}
 
 		setStatus("ダウンロード中...");
+		setStatusType("idle");
 		setDownloading(true);
 		setProgress(0);
 
 		try {
-			// download_video コマンドに customFilename を渡す
-			await invoke<string>("download_video", {
+			const outputPath = await invoke<string>("download_video", {
 				url,
 				audioOnly,
 				folderPath: folderPath === "" ? null : folderPath,
@@ -193,14 +200,34 @@ export function useVideoDownloader(): VideoDownloaderState &
 				customFilename: customFilename.trim() || null,
 			});
 			setProgress(100);
+			setStatusType("success");
 			setStatus("ダウンロードが完了しました");
+			setShowCompletedProgress(true);
+			setTimeout(() => setShowCompletedProgress(false), 2000);
+			toast.success("ダウンロードが完了しました", {
+				description: outputPath,
+				duration: 8000,
+			});
 		} catch (error) {
+			setStatusType("error");
 			setStatus(`ダウンロードエラー: ${error}`);
+			toast.error("ダウンロードに失敗しました", {
+				description: String(error),
+				duration: 8000,
+			});
 			setProgress(0);
 		} finally {
 			setDownloading(false);
 		}
-	};
+	}, [
+		url,
+		folderPath,
+		audioOnly,
+		bestQuality,
+		downloadSubtitles,
+		preferredFormat,
+		customFilename,
+	]);
 
 	return {
 		url,
@@ -214,6 +241,8 @@ export function useVideoDownloader(): VideoDownloaderState &
 		status,
 		downloading,
 		progress,
+		showCompletedProgress,
+		statusType,
 		setUrl,
 		setFolderPath,
 		setAudioOnly,

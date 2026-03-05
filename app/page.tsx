@@ -18,6 +18,8 @@ export default function Home() {
 		status,
 		downloading,
 		progress,
+		showCompletedProgress,
+		statusType,
 		setUrl,
 		setFolderPath,
 		setAudioOnly,
@@ -55,6 +57,8 @@ export default function Home() {
 						status={status}
 						downloading={downloading}
 						progress={progress}
+						showCompletedProgress={showCompletedProgress}
+						statusType={statusType}
 						handleDownload={handleDownload}
 					/>
 				</div>

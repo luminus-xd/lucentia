@@ -7,7 +7,6 @@ import {
 	File,
 	X,
 } from "lucide-react";
-import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +41,8 @@ interface VideoFormProps {
 	status: string;
 	downloading: boolean;
 	progress: number;
+	showCompletedProgress: boolean;
+	statusType: "idle" | "success" | "error";
 	handleDownload: () => Promise<void>;
 }
 
@@ -80,6 +81,8 @@ export function VideoForm({
 	status,
 	downloading,
 	progress,
+	showCompletedProgress,
+	statusType,
 	handleDownload,
 }: VideoFormProps) {
 	return (
@@ -231,7 +234,7 @@ export function VideoForm({
 				</Button>
 			</div>
 
-			{downloading ? (
+			{downloading || showCompletedProgress ? (
 				<div className="space-y-1">
 					<Progress value={progress} className="h-2" />
 					<p className="text-xs text-right text-muted-foreground">
@@ -244,11 +247,10 @@ export function VideoForm({
 				<Card className="overflow-hidden border border-border/50 bg-background/50 backdrop-blur-xs">
 					<div className="relative aspect-video w-full overflow-hidden">
 						{metadata.thumbnail ? (
-							<Image
+							<img
 								src={metadata.thumbnail}
 								alt={metadata.title}
-								fill
-								className="object-cover transition-transform hover:scale-105 duration-500"
+								className="object-cover w-full h-full transition-transform hover:scale-105 duration-500"
 							/>
 						) : (
 							noThumbnailPlaceholder
@@ -272,8 +274,23 @@ export function VideoForm({
 			) : null}
 
 			{status ? (
-				<div className="text-sm text-muted-foreground">
-					<p>{status}</p>
+				<div
+					className={`text-sm ${
+						statusType === "success"
+							? "text-green-500"
+							: statusType === "error"
+								? "text-red-500"
+								: "text-muted-foreground"
+					}`}
+				>
+					{status.split("\n").map((line, i) => (
+						<p
+							key={line}
+							className={i > 0 ? "font-mono text-xs break-all mt-1" : undefined}
+						>
+							{line}
+						</p>
+					))}
 				</div>
 			) : null}
 		</div>

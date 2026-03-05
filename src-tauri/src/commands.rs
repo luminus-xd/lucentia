@@ -1,8 +1,10 @@
 use regex::Regex;
 use serde::Serialize;
-use serde_json;
+
 use std::path::Path;
 use std::sync::LazyLock;
+use tauri::Emitter;
+use tokio::io::AsyncBufReadExt;
 use uuid::Uuid;
 use youtube_dl::YoutubeDl;
 
@@ -15,6 +17,8 @@ static RE_FIRST_TIMESTAMP: LazyLock<Regex> =
   LazyLock::new(|| Regex::new(r"\?t=\d+\.?\d*&").unwrap());
 static RE_ONLY_TIMESTAMP: LazyLock<Regex> =
   LazyLock::new(|| Regex::new(r"\?t=\d+\.?\d*$").unwrap());
+static RE_PROGRESS: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"\[download\]\s+(\d+\.?\d*)%").unwrap());
 
 #[derive(Serialize)]
 pub struct VideoMetadata {
@@ -23,11 +27,9 @@ pub struct VideoMetadata {
   pub duration: Option<String>,
 }
 
-#[derive(Serialize)]
-pub struct VideoFormat {
-  pub format_id: String,
-  pub ext: String,
-  pub resolution: String,
+#[derive(Serialize, Clone)]
+struct DownloadProgress {
+  percent: f64,
 }
 
 #[tauri::command]
@@ -119,7 +121,9 @@ fn format_duration(d: &serde_json::Value) -> Option<String> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn download_video(
+  app_handle: tauri::AppHandle,
   url: String,
   audio_only: bool,
   folder_path: Option<String>,
@@ -127,7 +131,7 @@ pub async fn download_video(
   download_subtitles: bool,
   preferred_format: Option<String>,
   custom_filename: Option<String>,
-) -> Result<(), String> {
+) -> Result<String, String> {
   log::info!("Downloading video: {}", url);
 
   if !is_valid_url(&url) {
@@ -204,16 +208,6 @@ pub async fn download_video(
     base_output_path
   };
 
-  log::info!("Output file: {}", output_path);
-
-  let mut instance = YoutubeDl::new(cleaned_url);
-  instance.youtube_dl_path(&yt_dlp_path);
-
-  instance
-    .socket_timeout("15")
-    .extra_arg("--no-check-certificate")
-    .extra_arg("--verbose");
-
   // Windows環境では単純なパス処理
   #[cfg(windows)]
   {
@@ -247,176 +241,187 @@ pub async fn download_video(
     };
 
     output_path = simple_path;
-    instance.extra_arg("--windows-filenames");
   }
 
+  log::info!("Output file: {}", output_path);
+
+  // yt-dlp コマンド引数の構築
+  let format_value = preferred_format.as_deref().unwrap_or("mp4");
+  let mut args: Vec<String> = vec![
+    "--newline".into(),
+    "--socket-timeout".into(),
+    "15".into(),
+    "--no-check-certificate".into(),
+  ];
+
+  #[cfg(windows)]
+  args.push("--windows-filenames".into());
+
   if audio_only {
-    instance
-      .extract_audio(true)
-      .extra_arg("--audio-format")
-      .extra_arg("mp3")
-      .extra_arg("--audio-quality")
-      .extra_arg("0");
+    args.extend(
+      ["--extract-audio", "--audio-format", "mp3", "--audio-quality", "0"]
+        .iter()
+        .map(|s| s.to_string()),
+    );
 
     #[cfg(windows)]
-    {
-      instance
-        .format("best")
-        .extra_arg("--no-mtime")
-        .extra_arg("--no-part")
-        .extra_arg("--windows-filenames");
-    }
+    args.extend(
+      ["--format", "best", "--no-mtime", "--no-part"]
+        .iter()
+        .map(|s| s.to_string()),
+    );
+  } else if best_quality {
+    args.extend(
+      [
+        "--format",
+        "bestvideo+bestaudio/best",
+        "--merge-output-format",
+        format_value,
+      ]
+      .iter()
+      .map(|s| s.to_string()),
+    );
+
+    #[cfg(windows)]
+    args.push("--prefer-ffmpeg".into());
   } else {
-    let format = match &preferred_format {
-      Some(fmt) => fmt.as_str(),
-      None => "mp4",
-    };
-
-    #[cfg(not(windows))]
-    {
-      if best_quality {
-        instance
-          .format("bestvideo+bestaudio/best")
-          .extra_arg("--merge-output-format")
-          .extra_arg(format);
-      } else {
-        instance
-          .format("best")
-          .extra_arg("--merge-output-format")
-          .extra_arg(format);
-      }
-    }
+    args.extend(
+      ["--format", "best", "--merge-output-format", format_value]
+        .iter()
+        .map(|s| s.to_string()),
+    );
 
     #[cfg(windows)]
-    {
-      instance.format("best");
-      instance.extra_arg("--prefer-ffmpeg");
-    }
+    args.push("--prefer-ffmpeg".into());
   }
 
   if download_subtitles {
-    instance
-      .extra_arg("--write-sub")
-      .extra_arg("--write-auto-sub")
-      .extra_arg("--sub-format")
-      .extra_arg("srt")
-      .extra_arg("--embed-subs")
-      .extra_arg("--sub-lang")
-      .extra_arg("ja,en");
+    args.extend(
+      [
+        "--write-sub",
+        "--write-auto-sub",
+        "--sub-format",
+        "srt",
+        "--embed-subs",
+        "--sub-lang",
+        "ja,en",
+      ]
+      .iter()
+      .map(|s| s.to_string()),
+    );
   }
 
-  instance.extra_arg("-o").extra_arg(&output_path);
+  args.extend(["-o".to_string(), output_path.clone(), cleaned_url]);
 
   log::info!("Starting download...");
   log::debug!(
-    "実行コマンド（参考）: {} --verbose \"{}\" -o \"{}\"",
+    "実行コマンド: {} {}",
     yt_dlp_path.to_string_lossy(),
-    &url,
-    output_path
+    args.join(" ")
   );
 
-  // Windows環境では直接実行を試みる
-  #[cfg(windows)]
-  {
-    log::info!("Windows環境では直接コマンド実行を優先します...");
-    let mut cmd = std::process::Command::new(&yt_dlp_path);
-    cmd.args(&[
-      "--verbose",
-      &url,
-      "-o",
-      &output_path,
-      "--no-check-certificate",
-      "--windows-filenames",
-    ]);
+  // tokio::process::Command で yt-dlp を起動
+  let mut child = tokio::process::Command::new(&yt_dlp_path)
+    .args(&args)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .map_err(|e| format!("yt-dlpの起動に失敗しました: {}", e))?;
 
-    if audio_only {
-      cmd.args(&["--extract-audio", "--audio-format", "mp3", "--audio-quality", "0"]);
-    } else {
-      let fmt = preferred_format.as_deref().unwrap_or("mp4");
-      if best_quality {
-        cmd.args(&["--format", "bestvideo+bestaudio/best", "--merge-output-format", fmt]);
-      } else {
-        cmd.args(&["--format", "best", "--merge-output-format", fmt]);
-      }
+  let stdout = child
+    .stdout
+    .take()
+    .ok_or("stdoutの取得に失敗しました")?;
+  let stderr = child
+    .stderr
+    .take()
+    .ok_or("stderrの取得に失敗しました")?;
+
+  // stderr をバックグラウンドで収集（エラー報告用）
+  let stderr_handle = tokio::spawn(async move {
+    let reader = tokio::io::BufReader::new(stderr);
+    let mut lines = reader.lines();
+    let mut output = String::new();
+    while let Ok(Some(line)) = lines.next_line().await {
+      log::debug!("yt-dlp stderr: {}", line);
+      output.push_str(&line);
+      output.push('\n');
     }
+    output
+  });
 
-    let output = cmd.output();
+  // stdout をパースしてダウンロード進捗を取得
+  let reader = tokio::io::BufReader::new(stdout);
+  let mut lines = reader.lines();
+  let uses_separate_streams = best_quality && !audio_only;
+  let mut pass: u32 = 0;
+  let mut last_raw_percent: f64 = 0.0;
+  let mut last_emitted: f64 = 0.0;
 
-    match output {
-      Ok(output) => {
-        if output.status.success() {
-          log::info!("コマンド実行が成功しました");
+  while let Ok(Some(line)) = lines.next_line().await {
+    log::debug!("yt-dlp: {}", line);
 
-          if Path::new(&output_path).exists() {
-            let metadata = std::fs::metadata(&output_path)
-              .map_or_else(|_| "不明".to_string(), |m| format!("{} bytes", m.len()));
-            log::info!("ファイルが正常に作成されました: {} ({})", output_path, metadata);
-            return Ok(());
-          } else {
-            log::warn!("コマンドは成功しましたが、ファイルが存在しません");
+    if let Some(caps) = RE_PROGRESS.captures(&line) {
+      if let Ok(raw_percent) = caps[1].parse::<f64>() {
+        // パーセンテージが大幅に下がった場合、新しいダウンロードパスと判定
+        if raw_percent < last_raw_percent - 10.0 {
+          pass += 1;
+        }
+        last_raw_percent = raw_percent;
+
+        let percent = if uses_separate_streams {
+          match pass {
+            0 => raw_percent * 0.5,          // 映像ストリーム: 0-50%
+            1 => 50.0 + raw_percent * 0.45,  // 音声ストリーム: 50-95%
+            _ => 95.0,
           }
         } else {
-          log::error!(
-            "コマンド実行エラー: {}",
-            String::from_utf8_lossy(&output.stderr)
-          );
+          raw_percent * 0.95 // 単一ストリーム: 0-95%
+        };
+
+        let percent = percent.min(95.0);
+        // 前回より大きい値のときだけ emit（プログレスバーの逆戻りを防止）
+        if percent > last_emitted {
+          last_emitted = percent;
+          let _ = app_handle.emit("download-progress", DownloadProgress { percent });
         }
       }
-      Err(e) => {
-        log::error!("コマンド実行の開始に失敗: {}", e);
-      }
+    } else if (line.contains("[Merger]")
+      || line.contains("[ExtractAudio]")
+      || line.contains("[FixupM3u8]"))
+      && 95.0 > last_emitted
+    {
+      last_emitted = 95.0;
+      let _ = app_handle.emit("download-progress", DownloadProgress { percent: 95.0 });
     }
-
-    log::info!("直接実行が失敗したため、ライブラリによる実行を試みます...");
   }
 
-  let result = instance.socket_timeout("15").download_to_async("").await;
+  let status = child
+    .wait()
+    .await
+    .map_err(|e| format!("プロセスの終了待ちに失敗: {}", e))?;
 
-  match result {
-    Ok(_) => {
-      log::info!("Downloaded video successfully.");
+  let stderr_output = stderr_handle.await.unwrap_or_default();
 
-      if Path::new(&output_path).exists() {
-        let metadata = match std::fs::metadata(&output_path) {
-          Ok(meta) => format!("{} bytes", meta.len()),
-          Err(_) => "不明".to_string(),
-        };
-        log::info!("出力ファイル: {} (サイズ: {})", output_path, metadata);
-        Ok(())
-      } else {
-        #[cfg(windows)]
-        {
-          log::warn!("出力ファイルが存在しません: {}", output_path);
-          log::info!("最終手段: 基本的なyt-dlpコマンドを実行します...");
+  if !status.success() {
+    log::error!("yt-dlpがエラーで終了しました: {}", stderr_output);
+    return Err(format!(
+      "ダウンロードに失敗しました: {}",
+      stderr_output.lines().last().unwrap_or("不明なエラー")
+    ));
+  }
 
-          let status = std::process::Command::new(&yt_dlp_path)
-            .args(&[&url, "-o", &output_path])
-            .status();
-
-          match status {
-            Ok(exit) if exit.success() => {
-              if Path::new(&output_path).exists() {
-                log::info!("ファイルが作成されました！");
-                return Ok(());
-              }
-            }
-            _ => {}
-          }
-
-          Err("ダウンロードは成功しましたが、ファイルが見つかりません".to_string())
-        }
-
-        #[cfg(not(windows))]
-        {
-          log::warn!("出力ファイルが存在しません: {}", output_path);
-          Err("ファイルのダウンロードに失敗しました".to_string())
-        }
-      }
-    }
-    Err(e) => {
-      log::error!("ダウンロードエラー: {}", e);
-      Err(format!("Error downloading video: {}", e))
-    }
+  if Path::new(&output_path).exists() {
+    let metadata = match std::fs::metadata(&output_path) {
+      Ok(meta) => format!("{} bytes", meta.len()),
+      Err(_) => "不明".to_string(),
+    };
+    log::info!("出力ファイル: {} (サイズ: {})", output_path, metadata);
+    let _ = app_handle.emit("download-progress", DownloadProgress { percent: 100.0 });
+    Ok(output_path)
+  } else {
+    log::warn!("出力ファイルが存在しません: {}", output_path);
+    Err("ダウンロードは成功しましたが、ファイルが見つかりません".to_string())
   }
 }
 
