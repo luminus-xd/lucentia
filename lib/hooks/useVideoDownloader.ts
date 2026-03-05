@@ -193,6 +193,7 @@ export function useVideoDownloader(): VideoDownloaderState &
 			setStatus("ダウンロードが完了しました");
 		} catch (error) {
 			setStatus(`ダウンロードエラー: ${error}`);
+			setProgress(0);
 		} finally {
 			setDownloading(false);
 		}
