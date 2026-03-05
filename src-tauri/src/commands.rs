@@ -34,7 +34,7 @@ struct DownloadProgress {
 
 #[tauri::command]
 pub async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
-  log::info!("Downloading metadata: {}", url);
+  log::info!("Downloading metadata: {url}");
 
   if !is_valid_url(&url) {
     return Err("有効なURLではありません".to_string());
@@ -64,7 +64,7 @@ pub async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
           .and_then(|thumbs| thumbs.first().cloned())
           .and_then(|thumb| thumb.url);
 
-        log::info!("プレイリストサムネイル: {:?}", thumbnail);
+        log::info!("プレイリストサムネイル: {thumbnail:?}");
 
         Ok(VideoMetadata {
           title: playlist.title.unwrap_or_else(|| "No Title".to_string()),
@@ -79,11 +79,11 @@ pub async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
             .and_then(|thumb| thumb.url)
         });
 
-        log::info!("ビデオサムネイル: {:?}", thumbnail);
+        log::info!("ビデオサムネイル: {thumbnail:?}");
 
         let duration = video.duration.and_then(|d| format_duration(&d));
 
-        log::info!("最終的なduration値: {:?}", duration);
+        log::info!("最終的なduration値: {duration:?}");
 
         Ok(VideoMetadata {
           title: video.title.unwrap_or_else(|| "No Title".to_string()),
@@ -98,12 +98,17 @@ pub async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
   }
 }
 
-/// serde_json::Value から duration を "MM:SS" 形式にフォーマットする
+/// `serde_json::Value` から duration を "MM:SS" 形式にフォーマットする
 fn format_duration(d: &serde_json::Value) -> Option<String> {
   let seconds = if let Some(s) = d.as_u64() {
     Some(s)
   } else if let Some(f) = d.as_f64() {
-    Some(f as u64)
+    if f >= 0.0 && f.is_finite() {
+      #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+      Some(f as u64)
+    } else {
+      None
+    }
   } else if let Some(s) = d.as_str() {
     s.parse::<u64>().ok()
   } else {
@@ -121,7 +126,7 @@ fn format_duration(d: &serde_json::Value) -> Option<String> {
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub async fn download_video(
   app_handle: tauri::AppHandle,
   url: String,
@@ -132,7 +137,7 @@ pub async fn download_video(
   preferred_format: Option<String>,
   custom_filename: Option<String>,
 ) -> Result<String, String> {
-  log::info!("Downloading video: {}", url);
+  log::info!("Downloading video: {url}");
 
   if !is_valid_url(&url) {
     return Err("有効なURLではありません".to_string());
@@ -149,13 +154,11 @@ pub async fn download_video(
 
   // 出力ファイル名生成（audio_only によって拡張子が変わる）
   let extension = if audio_only {
-    "mp3".to_string()
+    "mp3"
   } else {
-    preferred_format
-      .clone()
-      .unwrap_or_else(|| "mp4".to_string())
+    preferred_format.as_deref().unwrap_or("mp4")
   };
-  let output_filename = format!("{}.{}", filename_base, extension);
+  let output_filename = format!("{filename_base}.{extension}");
 
   // フォルダパスの検証と安全なパスの構築
   let base_output_path = if let Some(p) = folder_path {
@@ -243,10 +246,50 @@ pub async fn download_video(
     output_path = simple_path;
   }
 
-  log::info!("Output file: {}", output_path);
+  log::info!("Output file: {output_path}");
 
-  // yt-dlp コマンド引数の構築
-  let format_value = preferred_format.as_deref().unwrap_or("mp4");
+  let args = build_yt_dlp_args(
+    &cleaned_url,
+    &output_path,
+    audio_only,
+    best_quality,
+    download_subtitles,
+    preferred_format.as_deref(),
+  );
+
+  log::info!("Starting download...");
+  log::debug!(
+    "実行コマンド: {} {}",
+    yt_dlp_path.to_string_lossy(),
+    args.join(" ")
+  );
+
+  run_yt_dlp_with_progress(&app_handle, &yt_dlp_path, &args, best_quality && !audio_only).await?;
+
+  if Path::new(&output_path).exists() {
+    let metadata = match std::fs::metadata(&output_path) {
+      Ok(meta) => format!("{} bytes", meta.len()),
+      Err(_) => "不明".to_string(),
+    };
+    log::info!("出力ファイル: {output_path} (サイズ: {metadata})");
+    let _ = app_handle.emit("download-progress", DownloadProgress { percent: 100.0 });
+    Ok(output_path)
+  } else {
+    log::warn!("出力ファイルが存在しません: {output_path}");
+    Err("ダウンロードは成功しましたが、ファイルが見つかりません".to_string())
+  }
+}
+
+/// yt-dlp のコマンド引数を構築する
+fn build_yt_dlp_args(
+  url: &str,
+  output_path: &str,
+  audio_only: bool,
+  best_quality: bool,
+  download_subtitles: bool,
+  preferred_format: Option<&str>,
+) -> Vec<String> {
+  let format_value = preferred_format.unwrap_or("mp4");
   let mut args: Vec<String> = vec![
     "--newline".into(),
     "--socket-timeout".into(),
@@ -260,15 +303,13 @@ pub async fn download_video(
   if audio_only {
     args.extend(
       ["--extract-audio", "--audio-format", "mp3", "--audio-quality", "0"]
-        .iter()
-        .map(|s| s.to_string()),
+        .map(String::from),
     );
 
     #[cfg(windows)]
     args.extend(
       ["--format", "best", "--no-mtime", "--no-part"]
-        .iter()
-        .map(|s| s.to_string()),
+        .map(String::from),
     );
   } else if best_quality {
     args.extend(
@@ -278,8 +319,7 @@ pub async fn download_video(
         "--merge-output-format",
         format_value,
       ]
-      .iter()
-      .map(|s| s.to_string()),
+      .map(String::from),
     );
 
     #[cfg(windows)]
@@ -287,8 +327,7 @@ pub async fn download_video(
   } else {
     args.extend(
       ["--format", "best", "--merge-output-format", format_value]
-        .iter()
-        .map(|s| s.to_string()),
+        .map(String::from),
     );
 
     #[cfg(windows)]
@@ -306,27 +345,27 @@ pub async fn download_video(
         "--sub-lang",
         "ja,en",
       ]
-      .iter()
-      .map(|s| s.to_string()),
+      .map(String::from),
     );
   }
 
-  args.extend(["-o".to_string(), output_path.clone(), cleaned_url]);
+  args.extend(["-o".to_string(), output_path.to_string(), url.to_string()]);
+  args
+}
 
-  log::info!("Starting download...");
-  log::debug!(
-    "実行コマンド: {} {}",
-    yt_dlp_path.to_string_lossy(),
-    args.join(" ")
-  );
-
-  // tokio::process::Command で yt-dlp を起動
-  let mut child = tokio::process::Command::new(&yt_dlp_path)
-    .args(&args)
+/// yt-dlp プロセスを起動し、進捗をフロントエンドにリアルタイム通知する
+async fn run_yt_dlp_with_progress(
+  app_handle: &tauri::AppHandle,
+  yt_dlp_path: &Path,
+  args: &[String],
+  uses_separate_streams: bool,
+) -> Result<(), String> {
+  let mut child = tokio::process::Command::new(yt_dlp_path)
+    .args(args)
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
-    .map_err(|e| format!("yt-dlpの起動に失敗しました: {}", e))?;
+    .map_err(|e| format!("yt-dlpの起動に失敗しました: {e}"))?;
 
   let stdout = child
     .stdout
@@ -343,7 +382,7 @@ pub async fn download_video(
     let mut lines = reader.lines();
     let mut output = String::new();
     while let Ok(Some(line)) = lines.next_line().await {
-      log::debug!("yt-dlp stderr: {}", line);
+      log::debug!("yt-dlp stderr: {line}");
       output.push_str(&line);
       output.push('\n');
     }
@@ -353,13 +392,12 @@ pub async fn download_video(
   // stdout をパースしてダウンロード進捗を取得
   let reader = tokio::io::BufReader::new(stdout);
   let mut lines = reader.lines();
-  let uses_separate_streams = best_quality && !audio_only;
   let mut pass: u32 = 0;
   let mut last_raw_percent: f64 = 0.0;
   let mut last_emitted: f64 = 0.0;
 
   while let Ok(Some(line)) = lines.next_line().await {
-    log::debug!("yt-dlp: {}", line);
+    log::debug!("yt-dlp: {line}");
 
     if let Some(caps) = RE_PROGRESS.captures(&line) {
       if let Ok(raw_percent) = caps[1].parse::<f64>() {
@@ -389,7 +427,7 @@ pub async fn download_video(
     } else if (line.contains("[Merger]")
       || line.contains("[ExtractAudio]")
       || line.contains("[FixupM3u8]"))
-      && 95.0 > last_emitted
+      && last_emitted < 95.0
     {
       last_emitted = 95.0;
       let _ = app_handle.emit("download-progress", DownloadProgress { percent: 95.0 });
@@ -399,30 +437,19 @@ pub async fn download_video(
   let status = child
     .wait()
     .await
-    .map_err(|e| format!("プロセスの終了待ちに失敗: {}", e))?;
+    .map_err(|e| format!("プロセスの終了待ちに失敗: {e}"))?;
 
   let stderr_output = stderr_handle.await.unwrap_or_default();
 
   if !status.success() {
-    log::error!("yt-dlpがエラーで終了しました: {}", stderr_output);
+    log::error!("yt-dlpがエラーで終了しました: {stderr_output}");
     return Err(format!(
       "ダウンロードに失敗しました: {}",
       stderr_output.lines().last().unwrap_or("不明なエラー")
     ));
   }
 
-  if Path::new(&output_path).exists() {
-    let metadata = match std::fs::metadata(&output_path) {
-      Ok(meta) => format!("{} bytes", meta.len()),
-      Err(_) => "不明".to_string(),
-    };
-    log::info!("出力ファイル: {} (サイズ: {})", output_path, metadata);
-    let _ = app_handle.emit("download-progress", DownloadProgress { percent: 100.0 });
-    Ok(output_path)
-  } else {
-    log::warn!("出力ファイルが存在しません: {}", output_path);
-    Err("ダウンロードは成功しましたが、ファイルが見つかりません".to_string())
-  }
+  Ok(())
 }
 
 /// URLからタイムスタンプパラメータ(t=XX)を安全に削除する関数
@@ -436,7 +463,7 @@ fn clean_timestamp_param(url: &str) -> String {
   let cleaned = RE_ONLY_TIMESTAMP.replace_all(&cleaned, "").to_string();
 
   if cleaned != url {
-    log::info!("タイムスタンプを削除したURL: {}", cleaned);
+    log::info!("タイムスタンプを削除したURL: {cleaned}");
   }
 
   cleaned
@@ -472,8 +499,8 @@ async fn get_video_title(url: &str, yt_dlp_path: &str) -> Result<String, String>
       }
     }
     Err(e) => {
-      log::error!("メタデータ取得エラー: {:?}", e);
-      Err(format!("動画情報の取得に失敗しました: {}", e))
+      log::error!("メタデータ取得エラー: {e:?}");
+      Err(format!("動画情報の取得に失敗しました: {e}"))
     }
   }
 }

@@ -17,7 +17,7 @@ fn main() {
   {
     let brew_paths = "/usr/local/bin:/opt/homebrew/bin";
     let current_path = env::var("PATH").unwrap_or_default();
-    let new_path = format!("{}:{}", brew_paths, current_path);
+    let new_path = format!("{brew_paths}:{current_path}");
     env::set_var("PATH", new_path);
   }
 
@@ -64,7 +64,7 @@ fn main() {
         rt.block_on(async {
           match get_yt_dlp_path().await {
             Ok(_) => log::info!("yt-dlpバイナリの準備が完了しました"),
-            Err(e) => log::error!("yt-dlpバイナリの準備に失敗しました: {}", e),
+            Err(e) => log::error!("yt-dlpバイナリの準備に失敗しました: {e}"),
           }
         });
       });

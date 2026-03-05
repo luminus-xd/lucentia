@@ -30,6 +30,7 @@ pub fn sanitize_filename(input: &str) -> String {
 }
 
 /// パスが安全かどうかを確認する関数
+#[must_use] 
 pub fn is_safe_path(path: &Path) -> bool {
   // パスが絶対パスであることを確認
   if !path.is_absolute() {
@@ -38,7 +39,7 @@ pub fn is_safe_path(path: &Path) -> bool {
 
   // パスが現在のディレクトリの上や特権的な場所を指していないことを確認
   let path_str = path.to_string_lossy();
-  if path_str.contains("..") || path_str.contains("~") {
+  if path_str.contains("..") || path_str.contains('~') {
     return false;
   }
 
