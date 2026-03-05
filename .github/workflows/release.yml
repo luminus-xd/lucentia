@@ -2,53 +2,67 @@ name: 'アプリケーションビルド & リリース'
 
 on:
   push:
-    # タグがpushされたときのみ実行
     tags:
       - 'v*'
-  # 手動実行も可能に
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'リリースタグ (例: v1.2.0)'
+        required: true
 
-# GitHubトークンに必要な権限を付与
 permissions:
   contents: write
-  packages: read
-  issues: write
-  pull-requests: write
 
 jobs:
   create-release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     outputs:
-      release_id: ${{ steps.create-release.outputs.id }}
-      
+      release_id: ${{ steps.create-release.outputs.result }}
+      tag_name: ${{ steps.resolve-tag.outputs.tag }}
+
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
+
+      - name: タグ名の解決
+        id: resolve-tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: タグ名の検証
+        shell: bash
+        run: |
+          TAG="${{ steps.resolve-tag.outputs.tag }}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "エラー: タグ名が不正です: $TAG"
+            echo "semver形式 (例: v1.2.3) である必要があります"
+            exit 1
+          fi
+
       - name: リリース作成
         id: create-release
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
+            const tag = '${{ steps.resolve-tag.outputs.tag }}';
             const { data } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag_name: context.ref.replace('refs/tags/', ''),
-              name: `Lucentia ${context.ref.replace('refs/tags/', '')}`,
+              tag_name: tag,
+              name: `Lucentia ${tag}`,
               draft: true,
               prerelease: false,
-              generate_release_notes: false
+              generate_release_notes: true
             });
             console.log(`Release ID: ${data.id}`);
             return data.id;
 
   build:
     needs: create-release
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
@@ -57,26 +71,29 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - name: ソースコードのチェックアウト
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: バージョン番号の更新
-        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "抽出したバージョン: $VERSION"
+          TAG="${{ needs.create-release.outputs.tag_name }}"
+          VERSION="${TAG#v}"
+          echo "バージョン: $VERSION"
+
           # tauri.conf.jsonのバージョン番号を更新
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            sed -i '' 's/"version": ".*"/"version": "'$VERSION'"/' src-tauri/tauri.conf.json
+          if command -v jq &> /dev/null; then
+            jq --arg v "$VERSION" '.version = $v' src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            sed -i '' 's/"version": "[^"]*"/"version": "'"$VERSION"'"/' src-tauri/tauri.conf.json
           else
-            sed -i 's/"version": ".*"/"version": "'$VERSION'"/' src-tauri/tauri.conf.json
+            sed -i 's/"version": "[^"]*"/"version": "'"$VERSION"'"/' src-tauri/tauri.conf.json
           fi
           cat src-tauri/tauri.conf.json
 
-      - name: NodeJSセットアップ
-        uses: actions/setup-node@v3
+      - name: Node.jsセットアップ
+        uses: actions/setup-node@v4
         with:
-          node-version: 'lts/*'
+          node-version-file: 'package.json'
           cache: 'npm'
 
       - name: Rustセットアップ
@@ -87,48 +104,12 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      # 依存関係のインストール
       - name: 依存関係インストール
         run: npm ci
 
-      # ビルド
       - name: Tauriビルド
-        id: tauri-build
-        uses: tauri-apps/tauri-action@v0.5.20
+        uses: tauri-apps/tauri-action@v0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
-          # 念のためtagNameも指定
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Lucentia ${{ github.ref_name }}'
-          releaseBody: |
-            # Lucentia ${{ github.ref_name }}
-            
-            ## 主な機能
-            
-            - **動画ダウンロード**：YouTubeやbilibili動画をダウンロード可能
-            - **自動ファイル名生成**：動画タイトルを自動検出
-            - **ダウンロード進捗表示**：リアルタイムの進捗バー
-            - **yt-dlp自動ダウンロード**：内部で自動的にyt-dlpをセットアップ
-            - **bilibili対応**：自動的にブラウザからcookieを取得
-            
-            ## インストール方法
-            
-            1. お使いのプラットフォームに合わせたインストーラーをダウンロード：
-              - Windows: `.msi`ファイル
-              - macOS: `.dmg`ファイル
-            
-            2. インストーラーを実行してインストールを完了
-          releaseDraft: true
-          prerelease: false
-          # Windowsでマイクロソフト証明書を使用する場合は以下をアンコメント
-          # windowsCodeSigningPfxBase64: ${{ secrets.WINDOWS_PFX_BASE64 }}
-          # windowsCodeSigningPfxPassword: ${{ secrets.WINDOWS_PFX_PASSWORD }}
-          # macOSでApple証明書を使用する場合は以下をアンコメント
-          # macOsCertificateBase64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
-          # macOsCertificatePassword: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          # macOsSigningIdentity: ${{ secrets.MACOS_SIGNING_IDENTITY }}
-          # アップデーター用のキーを設定する場合は以下をアンコメント
-          # tauriPrivateKeyBase64: ${{ secrets.TAURI_PRIVATE_KEY }}
-          # tauriPrivateKeyPassword: ${{ secrets.TAURI_KEY_PASSWORD }} 
