@@ -98,7 +98,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function SettingsPage() {
-	const { settings, pathStatus, loading, saveSettings, updateField, changeSavePath, resetSettings } = useSettings();
+	const { settings, pathStatus, loading, hasChanges, saveSettings, updateField, changeSavePath, resetSettings } = useSettings();
 	const [appVersion, setAppVersion] = useState<string>("...");
 	const [ytDlpVersion, setYtDlpVersion] = useState<string>("...");
 	const [updating, setUpdating] = useState(false);
@@ -182,7 +182,8 @@ export default function SettingsPage() {
 				<button
 					type="button"
 					onClick={handleSave}
-					className="flex items-center gap-2 rounded-lg bg-cyan px-5 h-10 text-sm font-semibold text-cyan-foreground hover:bg-cyan/90 transition-colors"
+					disabled={!hasChanges}
+					className="flex items-center gap-2 rounded-lg bg-cyan px-5 h-10 text-sm font-semibold text-cyan-foreground transition-colors enabled:hover:bg-cyan/90 disabled:opacity-40 disabled:cursor-not-allowed"
 				>
 					<Save className="h-4 w-4" />
 					Save Changes

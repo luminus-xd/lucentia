@@ -35,13 +35,17 @@ const FALLBACK_SETTINGS: AppSettings = {
 
 export function useSettings() {
 	const [settings, setSettings] = useState<AppSettings>(FALLBACK_SETTINGS);
+	const [savedSettings, setSavedSettings] = useState<AppSettings>(FALLBACK_SETTINGS);
 	const [pathStatus, setPathStatus] = useState<SavePathStatus | null>(null);
 	const [loading, setLoading] = useState(true);
+
+	const hasChanges = JSON.stringify(settings) !== JSON.stringify(savedSettings);
 
 	useEffect(() => {
 		invoke<AppSettings>("get_settings")
 			.then(async (s) => {
 				setSettings(s);
+				setSavedSettings(s);
 				const status = await invoke<SavePathStatus>("validate_save_path", {
 					path: s.savePath,
 				});
@@ -54,6 +58,7 @@ export function useSettings() {
 	const saveSettings = useCallback(async (updated: AppSettings) => {
 		await invoke("save_settings", { newSettings: updated });
 		setSettings(updated);
+		setSavedSettings(updated);
 	}, []);
 
 	const updateField = useCallback(
@@ -66,14 +71,16 @@ export function useSettings() {
 	const changeSavePath = useCallback(async (newPath: string) => {
 		const status = await invoke<SavePathStatus>("change_save_path", { newPath });
 		setSettings((prev) => ({ ...prev, savePath: newPath }));
+		setSavedSettings((prev) => ({ ...prev, savePath: newPath }));
 		setPathStatus(status);
 	}, []);
 
 	const resetSettings = useCallback(async () => {
 		const result = await invoke<{ settings: AppSettings; pathStatus: SavePathStatus }>("reset_settings");
 		setSettings(result.settings);
+		setSavedSettings(result.settings);
 		setPathStatus(result.pathStatus);
 	}, []);
 
-	return { settings, pathStatus, loading, saveSettings, updateField, changeSavePath, resetSettings };
+	return { settings, pathStatus, loading, hasChanges, saveSettings, updateField, changeSavePath, resetSettings };
 }
