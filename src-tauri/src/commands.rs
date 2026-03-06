@@ -22,6 +22,11 @@ const AUDIO_EXTENSIONS: &[&str] = &["mp3", "m4a", "opus", "ogg", "wav", "flac", 
 /// yt-dlp でダウンロード可能な音声フォーマット
 const SUPPORTED_AUDIO_FORMATS: &[&str] = &["mp3", "m4a"];
 
+/// yt-dlp フォーマットセレクタ
+const FMT_BEST_AUDIO: &str = "bestaudio/best";
+const FMT_BEST_VIDEO_AUDIO: &str = "bestvideo+bestaudio/best";
+const FMT_BEST_SINGLE: &str = "best";
+
 static RE_AMP_TIMESTAMP: LazyLock<Regex> =
   LazyLock::new(|| Regex::new(r"&t=\d+\.?\d*").unwrap());
 static RE_FIRST_TIMESTAMP: LazyLock<Regex> =
@@ -274,7 +279,15 @@ pub async fn download_video(
         .take(20)
         .collect::<String>();
 
-      let new_path = dir.join(format!("{}.{}", clean_name, ext.to_string_lossy()));
+      let mut new_path = dir.join(format!("{}.{}", clean_name, ext.to_string_lossy()));
+
+      // 単純化後のファイル名が既に存在する場合はUUIDで衝突回避
+      if new_path.exists() {
+        let uuid_str = Uuid::new_v4().to_string();
+        let uuid = uuid_str.split('-').next().unwrap_or("unique");
+        new_path = dir.join(format!("{}_{}.{}", clean_name, uuid, ext.to_string_lossy()));
+      }
+
       log::info!(
         "パス名を単純化: {} -> {}",
         output_path,
@@ -375,6 +388,7 @@ fn build_yt_dlp_args(
   #[cfg(windows)]
   {
     args.push("--windows-filenames".into());
+    // CREATE_NO_WINDOW でコンソールがないため、上書き確認プロンプトでハングを防止
     args.push("--force-overwrites".into());
   }
 
@@ -392,25 +406,15 @@ fn build_yt_dlp_args(
         "--audio-quality",
         "0",
         "--format",
-        "bestaudio/best",
+        FMT_BEST_AUDIO,
         "--no-mtime",
       ]
       .map(String::from),
     );
-  } else if best_quality {
-    args.extend(
-      [
-        "--format",
-        "bestvideo+bestaudio/best",
-        "--merge-output-format",
-        format_value,
-      ]
-      .map(String::from),
-    );
-
   } else {
+    let format_selector = if best_quality { FMT_BEST_VIDEO_AUDIO } else { FMT_BEST_SINGLE };
     args.extend(
-      ["--format", "best", "--merge-output-format", format_value]
+      ["--format", format_selector, "--merge-output-format", format_value]
         .map(String::from),
     );
   }
@@ -485,34 +489,34 @@ async fn run_yt_dlp_with_progress(
   while let Ok(Some(line)) = lines.next_line().await {
     log::debug!("yt-dlp: {line}");
 
-    if let Some(caps) = RE_PROGRESS.captures(&line) {
-      if let Ok(raw_percent) = caps[1].parse::<f64>() {
-        // パーセンテージが大幅に下がった場合、新しいダウンロードパスと判定
-        if raw_percent < last_raw_percent - 10.0 {
-          pass += 1;
-        }
-        last_raw_percent = raw_percent;
-
-        let percent = if uses_separate_streams {
-          match pass {
-            0 => raw_percent * 0.5,          // 映像ストリーム: 0-50%
-            1 => 50.0 + raw_percent * 0.45,  // 音声ストリーム: 50-95%
-            _ => 95.0,
+    if line.starts_with("[download]") {
+      if let Some(caps) = RE_PROGRESS.captures(&line) {
+        if let Ok(raw_percent) = caps[1].parse::<f64>() {
+          // パーセンテージが大幅に下がった場合、新しいダウンロードパスと判定
+          if raw_percent < last_raw_percent - 10.0 {
+            pass += 1;
           }
-        } else {
-          raw_percent * 0.95 // 単一ストリーム: 0-95%
-        };
+          last_raw_percent = raw_percent;
 
-        let percent = percent.min(95.0);
+          let percent = if uses_separate_streams {
+            match pass {
+              0 => raw_percent * 0.5,          // 映像ストリーム: 0-50%
+              1 => 50.0 + raw_percent * 0.45,  // 音声ストリーム: 50-95%
+              _ => 95.0,
+            }
+          } else {
+            raw_percent * 0.95 // 単一ストリーム: 0-95%
+          };
 
-        // speed / ETA をキャプチャ（yt-dlp 出力に含まれている場合のみ）
-        let speed = caps.get(2).map(|m| m.as_str().to_string());
-        let eta = caps.get(3).map(|m| m.as_str().to_string());
+          let percent = percent.min(95.0);
 
-        // 前回より大きい値のときだけ emit（プログレスバーの逆戻りを防止）
-        if percent > last_emitted {
-          last_emitted = percent;
-          let _ = app_handle.emit("download-progress", DownloadProgress { percent, speed, eta });
+          let speed = caps.get(2).map(|m| m.as_str().to_string());
+          let eta = caps.get(3).map(|m| m.as_str().to_string());
+
+          if percent > last_emitted {
+            last_emitted = percent;
+            let _ = app_handle.emit("download-progress", DownloadProgress { percent, speed, eta });
+          }
         }
       }
     } else if (line.contains("[Merger]")
