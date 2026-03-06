@@ -890,7 +890,7 @@ pub fn open_file_in_folder(path: String) -> Result<(), String> {
   #[cfg(target_os = "windows")]
   {
     std::process::Command::new("explorer")
-      .arg(format!("/select,{path}"))
+      .arg(format!("/select,{}", path.replace('/', "\\")))
       .spawn()
       .map_err(|e| format!("error.explorer_failed:{e}"))?;
   }
@@ -923,10 +923,9 @@ pub fn open_file(path: String) -> Result<(), String> {
 
   #[cfg(target_os = "windows")]
   {
-    use std::os::windows::process::CommandExt;
-    std::process::Command::new("cmd")
-      .args(["/C", "start", "", &path])
-      .creation_flags(crate::downloader::CREATE_NO_WINDOW)
+    let win_path = path.replace('/', "\\");
+    std::process::Command::new("explorer")
+      .arg(&win_path)
       .spawn()
       .map_err(|e| format!("error.file_open_failed:{e}"))?;
   }
