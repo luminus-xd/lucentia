@@ -377,6 +377,7 @@ fn build_yt_dlp_args(
     "15".into(),
     "--no-check-certificate".into(),
     "--force-ipv4".into(),
+    "--no-playlist".into(),
   ];
 
   if let Some(location) = ffmpeg_location {
