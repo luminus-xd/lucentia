@@ -2,8 +2,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::env;
-use tokio::runtime::Runtime;
-
 mod commands;
 mod downloader;
 mod history;
@@ -13,10 +11,10 @@ mod utils;
 use crate::commands::{
   clear_cache, clear_history, delete_downloaded_files, download_metadata, download_video,
   get_download_stats, get_history, change_save_path, get_settings, get_yt_dlp_version,
-  initialize_app, is_initialized, list_downloaded_files, open_file, open_file_in_folder,
-  reset_settings, save_settings, update_yt_dlp, validate_save_path,
+  initialize_app, is_initialized, is_setup_complete, list_downloaded_files, open_file,
+  open_file_in_folder, reset_settings, save_settings, update_yt_dlp, validate_save_path,
 };
-use crate::downloader::{ensure_deno, ensure_ffmpeg, get_deno_dir, get_ffmpeg_dir, get_yt_dlp_path};
+use crate::downloader::{get_deno_dir, get_ffmpeg_dir, setup_binaries};
 
 fn main() {
   // 環境に応じたPATH設定
@@ -93,6 +91,7 @@ fn main() {
       download_video,
       download_metadata,
       is_initialized,
+      is_setup_complete,
       initialize_app,
       validate_save_path,
       change_save_path,
@@ -110,28 +109,9 @@ fn main() {
       reset_settings,
       clear_cache,
     ])
-    .setup(|_app| {
-      // yt-dlp, Deno, FFmpeg のダウンロードを非同期で並行実行
-      std::thread::spawn(|| {
-        let rt = Runtime::new().unwrap();
-        rt.block_on(async {
-          let (yt_dlp_result, deno_result, ffmpeg_result) =
-            tokio::join!(get_yt_dlp_path(), ensure_deno(), ensure_ffmpeg());
-
-          match yt_dlp_result {
-            Ok(_) => log::info!("yt-dlpバイナリの準備が完了しました"),
-            Err(e) => log::error!("yt-dlpバイナリの準備に失敗しました: {e}"),
-          }
-          match deno_result {
-            Ok(_) => log::info!("Denoランタイムの準備が完了しました"),
-            Err(e) => log::error!("Denoランタイムの準備に失敗しました: {e}"),
-          }
-          match ffmpeg_result {
-            Ok(_) => log::info!("FFmpegバイナリの準備が完了しました"),
-            Err(e) => log::error!("FFmpegバイナリの準備に失敗しました: {e}"),
-          }
-        });
-      });
+    .setup(|app| {
+      // yt-dlp, Deno, FFmpeg のダウンロードを非同期で並行実行（進捗イベント付き）
+      setup_binaries(app.handle().clone());
       Ok(())
     })
     .run(tauri::generate_context!())

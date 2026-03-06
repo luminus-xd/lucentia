@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAppVersion } from "@/lib/hooks/useAppVersion";
+import { useSetupProgress } from "@/lib/hooks/useSetupProgress";
 import { useTranslation } from "@/lib/i18n";
 import {
 	Sparkles,
@@ -10,6 +11,9 @@ import {
 	Download,
 	Clock,
 	Settings,
+	Loader2,
+	Check,
+	X,
 } from "lucide-react";
 import type { TranslationKey } from "@/lib/i18n";
 import type { LucideIcon } from "lucide-react";
@@ -25,6 +29,7 @@ export function Sidebar() {
 	const pathname = usePathname();
 	const version = useAppVersion();
 	const { t } = useTranslation();
+	const { steps, isComplete } = useSetupProgress();
 
 	return (
 		<aside className="w-60 shrink-0 bg-sidebar flex flex-col h-screen border-r border-border/50">
@@ -64,6 +69,34 @@ export function Sidebar() {
 
 				{/* スペーサー */}
 				<div className="flex-1" />
+
+				{/* セットアップ進捗 */}
+				{!isComplete && (
+					<div className="rounded-lg border border-border/50 bg-secondary/30 p-3">
+						<div className="flex items-center gap-2 mb-2">
+							<Loader2 className="h-3.5 w-3.5 animate-spin text-cyan" />
+							<span className="text-xs font-medium text-sidebar-foreground">
+								{t("setupProgress.title")}
+							</span>
+						</div>
+						<div className="flex flex-col gap-1.5">
+							{(["yt-dlp", "ffmpeg", "deno"] as const).map((step) => (
+								<div key={step} className="flex items-center gap-2">
+									{steps[step] === "ready" ? (
+										<Check className="h-3 w-3 text-emerald-400" />
+									) : steps[step] === "error" ? (
+										<X className="h-3 w-3 text-red-400" />
+									) : steps[step] === "in_progress" ? (
+										<Loader2 className="h-3 w-3 animate-spin text-cyan" />
+									) : (
+										<div className="h-3 w-3 rounded-full border border-sidebar-muted" />
+									)}
+									<span className="text-[11px] text-sidebar-muted">{step}</span>
+								</div>
+							))}
+						</div>
+					</div>
+				)}
 
 				{/* アプリバージョン */}
 				{version && (

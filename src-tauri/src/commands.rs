@@ -435,11 +435,16 @@ async fn run_yt_dlp_with_progress(
   args: &[String],
   uses_separate_streams: bool,
 ) -> Result<(), String> {
-  let mut child = tokio::process::Command::new(yt_dlp_path)
-    .args(args)
+  let mut cmd = tokio::process::Command::new(yt_dlp_path);
+  cmd.args(args)
     .stdout(std::process::Stdio::piped())
-    .stderr(std::process::Stdio::piped())
-    .spawn()
+    .stderr(std::process::Stdio::piped());
+  #[cfg(windows)]
+  {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(crate::downloader::CREATE_NO_WINDOW);
+  }
+  let mut child = cmd.spawn()
     .map_err(|e| format!("error.ytdlp_spawn:{e}"))?;
 
   let stdout = child
@@ -595,6 +600,12 @@ pub async fn update_yt_dlp() -> Result<String, String> {
 #[tauri::command]
 pub async fn get_yt_dlp_version() -> Result<String, String> {
   crate::downloader::get_yt_dlp_version().await
+}
+
+/// バイナリのセットアップが完了しているかを返す
+#[tauri::command]
+pub fn is_setup_complete() -> bool {
+  crate::downloader::is_setup_done()
 }
 
 // ─── 初期化コマンド ────────────────────────────────
@@ -902,8 +913,10 @@ pub fn open_file(path: String) -> Result<(), String> {
 
   #[cfg(target_os = "windows")]
   {
+    use std::os::windows::process::CommandExt;
     std::process::Command::new("cmd")
       .args(["/C", "start", "", &path])
+      .creation_flags(crate::downloader::CREATE_NO_WINDOW)
       .spawn()
       .map_err(|e| format!("error.file_open_failed:{e}"))?;
   }

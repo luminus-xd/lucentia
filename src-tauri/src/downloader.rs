@@ -1,14 +1,111 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
+
+use serde::Serialize;
+use tauri::Emitter;
+use tokio::runtime::Runtime;
 use youtube_dl::downloader::download_yt_dlp;
 
 use crate::utils::ensure_app_data_dir;
 
+// ─── パスキャッシュ ──────────────────────────────────
+
+static YT_DLP_PATH_CACHE: OnceLock<PathBuf> = OnceLock::new();
+static FFMPEG_DIR_CACHE: OnceLock<PathBuf> = OnceLock::new();
+static DENO_PATH_CACHE: OnceLock<PathBuf> = OnceLock::new();
+static SETUP_COMPLETE: AtomicBool = AtomicBool::new(false);
+
+// ─── セットアップ進捗 ────────────────────────────────
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SetupProgress {
+  step: String,
+  status: String,
+}
+
+/// セットアップ完了状態を返す
+pub fn is_setup_done() -> bool {
+  SETUP_COMPLETE.load(Ordering::Relaxed)
+}
+
+/// セットアップステップを実行し、進捗をフロントに通知するヘルパー
+async fn run_setup_step<F, T, Fut>(handle: &tauri::AppHandle, step: &str, label: &str, f: F)
+where
+  F: FnOnce() -> Fut,
+  Fut: std::future::Future<Output = Result<T, String>>,
+{
+  let _ = handle.emit(
+    "setup-progress",
+    SetupProgress { step: step.into(), status: "in_progress".into() },
+  );
+  let result = f().await;
+  let status = if result.is_ok() { "ready" } else { "error" };
+  let _ = handle.emit(
+    "setup-progress",
+    SetupProgress { step: step.into(), status: status.into() },
+  );
+  match result {
+    Ok(_) => log::info!("{label}の準備が完了しました"),
+    Err(e) => log::error!("{label}の準備に失敗しました: {e}"),
+  }
+}
+
+/// バックグラウンドで全バイナリを準備し、進捗をフロントに通知する
+pub fn setup_binaries(app_handle: tauri::AppHandle) {
+  std::thread::spawn(move || {
+    let rt = Runtime::new().unwrap();
+    rt.block_on(async {
+      let handle = &app_handle;
+
+      tokio::join!(
+        run_setup_step(handle, "yt-dlp", "yt-dlpバイナリ", get_yt_dlp_path),
+        run_setup_step(handle, "ffmpeg", "FFmpegバイナリ", ensure_ffmpeg),
+        run_setup_step(handle, "deno", "Denoランタイム", ensure_deno),
+      );
+
+      SETUP_COMPLETE.store(true, Ordering::Relaxed);
+      let _ = handle.emit("setup-complete", ());
+      log::info!("全バイナリのセットアップが完了しました");
+    });
+  });
+}
+
+// ─── Windows コンソール非表示ヘルパー ─────────────────
+
+/// Windows の CREATE_NO_WINDOW フラグ
+#[cfg(windows)]
+pub(crate) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Windows でコンソールウィンドウを非表示にする `Command` を生成する
+pub(crate) fn silent_command(program: &std::path::Path) -> std::process::Command {
+  #[allow(unused_mut)]
+  let mut cmd = std::process::Command::new(program);
+  #[cfg(windows)]
+  {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+  }
+  cmd
+}
+
 // ─── yt-dlp ────────────────────────────────────────
 
 /// yt-dlpバイナリのパスを取得する関数
-/// アプリケーションのデータディレクトリにyt-dlpバイナリが存在するかチェックし、
-/// 存在しない場合はダウンロードします。
+/// 初回はバージョンチェックを行い、以降はキャッシュから返す
 pub async fn get_yt_dlp_path() -> Result<PathBuf, String> {
+  if let Some(cached) = YT_DLP_PATH_CACHE.get() {
+    return Ok(cached.clone());
+  }
+
+  let path = get_yt_dlp_path_uncached().await?;
+  let _ = YT_DLP_PATH_CACHE.set(path.clone());
+  Ok(path)
+}
+
+/// yt-dlpバイナリのパスを取得する（キャッシュなし）
+async fn get_yt_dlp_path_uncached() -> Result<PathBuf, String> {
   let app_data_dir = ensure_app_data_dir()?;
 
   let yt_dlp_path = app_data_dir.join(if cfg!(windows) {
@@ -24,7 +121,7 @@ pub async fn get_yt_dlp_path() -> Result<PathBuf, String> {
 
   log::info!("既存のyt-dlpバイナリを使用します: {}", yt_dlp_path.display());
 
-  let version_check = std::process::Command::new(&yt_dlp_path)
+  let version_check = silent_command(&yt_dlp_path)
     .arg("--version")
     .output();
 
@@ -71,7 +168,7 @@ pub async fn update_yt_dlp() -> Result<String, String> {
 
   let path = download_and_setup_yt_dlp(&app_data_dir).await?;
 
-  let version = std::process::Command::new(&path)
+  let version = silent_command(&path)
     .arg("--version")
     .output()
     .ok()
@@ -87,7 +184,7 @@ pub async fn update_yt_dlp() -> Result<String, String> {
 pub async fn get_yt_dlp_version() -> Result<String, String> {
   let path = get_yt_dlp_path().await?;
 
-  let output = std::process::Command::new(&path)
+  let output = silent_command(&path)
     .arg("--version")
     .output()
     .map_err(|e| format!("error.ytdlp_version_failed:{e}"))?;
@@ -125,13 +222,25 @@ pub fn get_ffmpeg_dir() -> Result<PathBuf, String> {
 }
 
 /// FFmpegバイナリの準備（存在しなければダウンロード）
+/// 初回はバージョンチェックを行い、以降はキャッシュから返す
 pub async fn ensure_ffmpeg() -> Result<PathBuf, String> {
+  if let Some(cached) = FFMPEG_DIR_CACHE.get() {
+    return Ok(cached.clone());
+  }
+
+  let result = ensure_ffmpeg_uncached().await?;
+  let _ = FFMPEG_DIR_CACHE.set(result.clone());
+  Ok(result)
+}
+
+/// FFmpegバイナリの準備（キャッシュなし）
+async fn ensure_ffmpeg_uncached() -> Result<PathBuf, String> {
   let ffmpeg_dir = get_ffmpeg_dir()?;
   let ffmpeg_path = ffmpeg_dir.join(ffmpeg_binary_name());
   let ffprobe_path = ffmpeg_dir.join(ffprobe_binary_name());
 
   if ffmpeg_path.exists() && ffprobe_path.exists() {
-    match std::process::Command::new(&ffmpeg_path).arg("-version").output() {
+    match silent_command(&ffmpeg_path).arg("-version").output() {
       Ok(output) if output.status.success() => {
         let version = String::from_utf8_lossy(&output.stdout);
         let first_line = version.lines().next().unwrap_or("unknown");
@@ -258,12 +367,24 @@ pub fn get_deno_dir() -> Result<PathBuf, String> {
 }
 
 /// Denoバイナリの準備（存在しなければダウンロード）
+/// 初回はバージョンチェックを行い、以降はキャッシュから返す
 pub async fn ensure_deno() -> Result<PathBuf, String> {
+  if let Some(cached) = DENO_PATH_CACHE.get() {
+    return Ok(cached.clone());
+  }
+
+  let result = ensure_deno_uncached().await?;
+  let _ = DENO_PATH_CACHE.set(result.clone());
+  Ok(result)
+}
+
+/// Denoバイナリの準備（キャッシュなし）
+async fn ensure_deno_uncached() -> Result<PathBuf, String> {
   let deno_dir = get_deno_dir()?;
   let deno_path = deno_dir.join(deno_binary_name());
 
   if deno_path.exists() {
-    match std::process::Command::new(&deno_path).arg("--version").output() {
+    match silent_command(&deno_path).arg("--version").output() {
       Ok(output) if output.status.success() => {
         let version = String::from_utf8_lossy(&output.stdout);
         let first_line = version.lines().next().unwrap_or("unknown");

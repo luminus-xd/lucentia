@@ -120,6 +120,9 @@ export const ja = {
 		start: "はじめる",
 		hint: "保存先はあとから設定画面で変更できます",
 	},
+	setupProgress: {
+		title: "初期セットアップ中...",
+	},
 	toast: {
 		settingsSaved: "設定を保存しました",
 		savePathChanged: "保存先を変更しました",

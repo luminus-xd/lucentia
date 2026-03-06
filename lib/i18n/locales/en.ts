@@ -123,6 +123,9 @@ export const en: Translations = {
 		start: "Get Started",
 		hint: "You can change the save location later in Settings",
 	},
+	setupProgress: {
+		title: "Initial setup...",
+	},
 	toast: {
 		settingsSaved: "Settings saved",
 		savePathChanged: "Save location changed",
