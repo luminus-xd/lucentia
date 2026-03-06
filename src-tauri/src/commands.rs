@@ -373,7 +373,10 @@ fn build_yt_dlp_args(
   }
 
   #[cfg(windows)]
-  args.push("--windows-filenames".into());
+  {
+    args.push("--windows-filenames".into());
+    args.push("--force-overwrites".into());
+  }
 
   if audio_only {
     let audio_format = if SUPPORTED_AUDIO_FORMATS.contains(&format_value) {
@@ -382,14 +385,17 @@ fn build_yt_dlp_args(
       "mp3"
     };
     args.extend(
-      ["--extract-audio", "--audio-format", audio_format, "--audio-quality", "0"]
-        .map(String::from),
-    );
-
-    #[cfg(windows)]
-    args.extend(
-      ["--format", "best", "--no-mtime", "--no-part"]
-        .map(String::from),
+      [
+        "--extract-audio",
+        "--audio-format",
+        audio_format,
+        "--audio-quality",
+        "0",
+        "--format",
+        "bestaudio/best",
+        "--no-mtime",
+      ]
+      .map(String::from),
     );
   } else if best_quality {
     args.extend(
