@@ -555,7 +555,8 @@ async fn run_yt_dlp_with_progress(
 
   if !status.success() {
     log::error!("yt-dlpがエラーで終了しました: {stderr_output}");
-    // stdoutのERROR行 → stderrの非WARNING行 → stderrの最終行の優先順位でエラーを特定
+    // stdoutのERROR行 → stderrの非WARNING行の優先順位でエラーを特定
+    // WARNING行はyt-dlpの警告であり、エラーメッセージとして表示しない
     let error_line = stdout_error.as_deref()
       .or_else(|| {
         stderr_output
@@ -563,7 +564,6 @@ async fn run_yt_dlp_with_progress(
           .filter(|line| !line.trim_start().starts_with("WARNING:"))
           .last()
       })
-      .or_else(|| stderr_output.lines().last())
       .unwrap_or("unknown error");
     return Err(map_yt_dlp_error(error_line, "error.download_failed"));
   }
