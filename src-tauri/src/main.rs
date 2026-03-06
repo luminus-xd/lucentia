@@ -58,11 +58,10 @@ fn main() {
     }
 
     env::set_var("NO_COLOR", "1");
-    env::set_var("HTTP_PROXY", "");
-    env::set_var("HTTPS_PROXY", "");
+    env::remove_var("HTTP_PROXY");
+    env::remove_var("HTTPS_PROXY");
 
     let temp_dirs = vec![
-      dirs::home_dir().map(|p| p.join("Downloads")),
       dirs::data_dir().map(|p| p.join("my-video-downloader").join("temp")),
       Some(std::env::temp_dir().join("my-video-downloader")),
     ];

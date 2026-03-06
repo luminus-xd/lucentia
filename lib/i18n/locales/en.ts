@@ -209,6 +209,8 @@ export const en: Translations = {
 		denoFileCreateFailed: "Failed to create file",
 		denoFileWriteFailed: "Failed to write file",
 		denoNotFoundInZip: "Deno binary not found in ZIP",
+		cookieFailed:
+			"Failed to read cookies. Please close the browser and try again.",
 		unknown: "An unknown error occurred",
 	},
 } as const;

@@ -206,6 +206,8 @@ export const ja = {
 		denoFileCreateFailed: "ファイルの作成に失敗しました",
 		denoFileWriteFailed: "ファイルの書き込みに失敗しました",
 		denoNotFoundInZip: "ZIP内にDenoバイナリが見つかりませんでした",
+		cookieFailed:
+			"Cookieの読み取りに失敗しました。ブラウザを閉じてから再試行してください。",
 		unknown: "不明なエラーが発生しました",
 	},
 } as const;

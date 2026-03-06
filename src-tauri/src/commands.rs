@@ -122,7 +122,7 @@ pub async fn download_metadata(url: String) -> Result<VideoMetadata, String> {
         Err("error.get_title_failed".to_string())
       }
     }
-    Err(e) => Err(format!("error.metadata_failed:{e}")),
+    Err(e) => Err(map_yt_dlp_error(&e.to_string(), "error.metadata_failed")),
   }
 }
 
@@ -276,7 +276,7 @@ pub async fn download_video(
       let clean_name = filename_base
         .chars()
         .filter(|c| !c.is_whitespace())
-        .take(20)
+        .take(100)
         .collect::<String>();
 
       let mut new_path = dir.join(format!("{}.{}", clean_name, ext.to_string_lossy()));
@@ -305,7 +305,7 @@ pub async fn download_video(
 
   let ffmpeg_location = get_ffmpeg_dir().ok().and_then(|dir| {
     let ffmpeg = dir.join(if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" });
-    ffmpeg.exists().then(|| dir.to_string_lossy().to_string())
+    ffmpeg.exists().then(|| ffmpeg.to_string_lossy().to_string())
   });
 
   let args = build_yt_dlp_args(
@@ -359,6 +359,7 @@ pub async fn download_video(
 }
 
 /// yt-dlp のコマンド引数を構築する
+#[allow(clippy::too_many_arguments)]
 fn build_yt_dlp_args(
   url: &str,
   output_path: &str,
@@ -417,6 +418,14 @@ fn build_yt_dlp_args(
       ["--format", format_selector, "--merge-output-format", format_value]
         .map(String::from),
     );
+
+    // MP4コンテナの場合、Opus音声をAACに変換してWindows互換性を確保
+    if format_value == "mp4" {
+      args.extend([
+        "--postprocessor-args".into(),
+        "Merger+ffmpeg_o:-c:v copy -c:a aac".into(),
+      ]);
+    }
   }
 
   if download_subtitles {
@@ -541,13 +550,25 @@ async fn run_yt_dlp_with_progress(
 
   if !status.success() {
     log::error!("yt-dlpがエラーで終了しました: {stderr_output}");
-    return Err(format!(
-      "error.download_failed:{}",
-      stderr_output.lines().last().unwrap_or("unknown error")
-    ));
+    let last_line = stderr_output.lines().last().unwrap_or("unknown error");
+    return Err(map_yt_dlp_error(last_line, "error.download_failed"));
   }
 
   Ok(())
+}
+
+/// Cookie関連のエラーかどうかを判定する
+fn is_cookie_error(error: &str) -> bool {
+  error.to_lowercase().contains("cookie")
+}
+
+/// エラー文字列をCookieエラー優先で適切なエラーキーに変換する
+fn map_yt_dlp_error(error: &str, default_key: &str) -> String {
+  if is_cookie_error(error) {
+    "error.cookie_failed".to_string()
+  } else {
+    format!("{default_key}:{error}")
+  }
 }
 
 /// URLからタイムスタンプパラメータ(t=XX)を安全に削除する関数
@@ -568,6 +589,7 @@ fn clean_timestamp_param(url: &str) -> String {
 }
 
 /// ダウンロード履歴エントリを構築するヘルパー
+#[allow(clippy::too_many_arguments)]
 fn build_history_entry(
   url: &str,
   title: &str,
@@ -662,8 +684,7 @@ pub struct ResetSettingsResult {
 
 #[tauri::command]
 pub fn reset_settings() -> Result<ResetSettingsResult, String> {
-  let mut defaults = AppSettings::default();
-  defaults.initialized = true;
+  let defaults = AppSettings { initialized: true, ..AppSettings::default() };
   settings::save_settings(&defaults)?;
   let path_status = settings::validate_save_path(&defaults.save_path);
   Ok(ResetSettingsResult {
@@ -980,7 +1001,7 @@ async fn get_video_info(url: &str, yt_dlp_path: &str) -> Result<(String, Option<
     }
     Err(e) => {
       log::error!("メタデータ取得エラー: {e:?}");
-      Err(format!("error.video_info_failed:{e}"))
+      Err(map_yt_dlp_error(&e.to_string(), "error.video_info_failed"))
     }
   }
 }
