@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAppVersion } from "@/lib/hooks/useAppVersion";
 import { useSetupProgress } from "@/lib/hooks/useSetupProgress";
@@ -51,7 +50,7 @@ export function Sidebar() {
 						const isActive =
 							href === "/" ? pathname === "/" : pathname.startsWith(href);
 						return (
-							<Link
+							<a
 								key={href}
 								href={href}
 								className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -62,7 +61,7 @@ export function Sidebar() {
 							>
 								<Icon className="h-4 w-4" />
 								{t(labelKey)}
-							</Link>
+							</a>
 						);
 					})}
 				</nav>

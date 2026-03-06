@@ -1,21 +1,19 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { useInitialization } from "@/lib/hooks/useInitialization";
 import { useTranslation } from "@/lib/i18n";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-	const router = useRouter();
 	const { state } = useInitialization();
 	const { t } = useTranslation();
 
 	useEffect(() => {
 		if (state === "needs-setup") {
-			router.replace("/setup");
+			window.location.href = "/setup";
 		}
-	}, [state, router]);
+	}, [state]);
 
 	if (state !== "ready") {
 		return (
