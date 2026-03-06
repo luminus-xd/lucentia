@@ -376,6 +376,7 @@ fn build_yt_dlp_args(
     "--socket-timeout".into(),
     "15".into(),
     "--no-check-certificate".into(),
+    "--force-ipv4".into(),
   ];
 
   if let Some(location) = ffmpeg_location {
@@ -494,11 +495,15 @@ async fn run_yt_dlp_with_progress(
   let mut pass: u32 = 0;
   let mut last_raw_percent: f64 = 0.0;
   let mut last_emitted: f64 = 0.0;
+  let mut stdout_error: Option<String> = None;
 
   while let Ok(Some(line)) = lines.next_line().await {
     log::debug!("yt-dlp: {line}");
 
-    if line.starts_with("[download]") {
+    // stdoutに出力されるERROR行を捕捉
+    if line.starts_with("ERROR:") {
+      stdout_error = Some(line);
+    } else if line.starts_with("[download]") {
       if let Some(caps) = RE_PROGRESS.captures(&line) {
         if let Ok(raw_percent) = caps[1].parse::<f64>() {
           // パーセンテージが大幅に下がった場合、新しいダウンロードパスと判定
@@ -550,8 +555,17 @@ async fn run_yt_dlp_with_progress(
 
   if !status.success() {
     log::error!("yt-dlpがエラーで終了しました: {stderr_output}");
-    let last_line = stderr_output.lines().last().unwrap_or("unknown error");
-    return Err(map_yt_dlp_error(last_line, "error.download_failed"));
+    // stdoutのERROR行 → stderrの非WARNING行 → stderrの最終行の優先順位でエラーを特定
+    let error_line = stdout_error.as_deref()
+      .or_else(|| {
+        stderr_output
+          .lines()
+          .filter(|line| !line.trim_start().starts_with("WARNING:"))
+          .last()
+      })
+      .or_else(|| stderr_output.lines().last())
+      .unwrap_or("unknown error");
+    return Err(map_yt_dlp_error(error_line, "error.download_failed"));
   }
 
   Ok(())
