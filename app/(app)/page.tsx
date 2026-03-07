@@ -3,13 +3,14 @@
 import { useHistory, formatBytes } from "@/lib/hooks/useHistory";
 import { useSettings } from "@/lib/hooks/useSettings";
 import { useVideoDownloader } from "@/lib/hooks/useVideoDownloader";
+import { useDownloadQueue } from "@/lib/hooks/useDownloadQueue";
 import { ensureNotificationPermission } from "@/lib/notifications";
 import { useTranslation } from "@/lib/i18n";
+import { isAudioFormat } from "@/lib/utils";
 import {
 	ArrowDownToLine,
 	Link,
 	ListOrdered,
-	Loader2,
 	TrendingUp,
 	Trophy,
 	HardDrive,
@@ -27,16 +28,33 @@ export default function DashboardPage() {
 		url,
 		metadata,
 		fetchingMetadata,
-		downloading,
-		progress,
 		preferredFormat,
 		setUrl,
 		setPreferredFormat,
-		handleDownload,
 	} = useVideoDownloader(settings);
+
+	const { queue, activeCount, addToQueue } = useDownloadQueue();
 
 	const { stats: dlStats, successRate } = useHistory();
 	const { t } = useTranslation();
+
+	const handleAddToQueue = () => {
+		if (!url) return;
+
+		addToQueue({
+			url,
+			metadata: metadata ?? null,
+			formatKey: preferredFormat,
+			audioOnly: isAudioFormat(preferredFormat),
+			bestQuality: true,
+			downloadSubtitles: false,
+			customFilename: "",
+			folderPath: "",
+		});
+
+		// URL入力をクリア
+		setUrl("");
+	};
 
 	useEffect(() => {
 		if (settings.notifComplete || settings.notifError) {
@@ -68,8 +86,6 @@ export default function DashboardPage() {
 		return () => window.removeEventListener("keydown", handler);
 	}, []);
 
-	const activeCount = downloading ? 1 : 0;
-
 	return (
 		<div className="flex flex-col gap-7 py-8 px-10">
 			{/* Header Row */}
@@ -100,7 +116,7 @@ export default function DashboardPage() {
 							onKeyDown={(e) => {
 								if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
 									e.preventDefault();
-									handleDownload();
+									handleAddToQueue();
 								}
 							}}
 							placeholder="https://www.youtube.com/watch?v=..."
@@ -126,26 +142,17 @@ export default function DashboardPage() {
 					/>
 					<button
 						type="button"
-						onClick={handleDownload}
-						disabled={downloading || !url}
+						onClick={handleAddToQueue}
+						disabled={!url || fetchingMetadata}
 						className="flex h-12 items-center gap-2 rounded-lg bg-cyan px-6 font-semibold text-cyan-foreground transition-colors hover:bg-cyan/90 disabled:cursor-not-allowed disabled:opacity-50"
 					>
-						{downloading ? (
-							<>
-								<Loader2 className="size-4 animate-spin" />
-								{t("status.downloading")}
-							</>
-						) : (
-							<>
-								{t("dashboard.download")}
-								<span className="flex items-center gap-1">
-									<ArrowDownToLine className="size-4" />
-									<kbd className="rounded bg-cyan-foreground/20 px-1.5 py-0.5 font-mono text-[10px]">
-										{isMac ? "⌘" : "Ctrl+"}↵
-									</kbd>
-								</span>
-							</>
-						)}
+						{t("dashboard.addToQueue")}
+						<span className="flex items-center gap-1">
+							<ArrowDownToLine className="size-4" />
+							<kbd className="rounded bg-cyan-foreground/20 px-1.5 py-0.5 font-mono text-[10px]">
+								{isMac ? "⌘" : "Ctrl+"}↵
+							</kbd>
+						</span>
 					</button>
 				</div>
 			</div>
@@ -189,20 +196,11 @@ export default function DashboardPage() {
 						{t("dashboard.downloadQueue")}
 					</span>
 					<span className="rounded bg-cyan px-2.5 py-1 text-[11px] font-bold text-cyan-foreground">
-						{metadata || fetchingMetadata ? 1 : 0}
+						{queue.filter((q) => q.status !== "completed").length + (fetchingMetadata ? 1 : 0)}
 					</span>
 				</div>
 
-				{metadata ? (
-					<div className="flex flex-col gap-2 overflow-y-auto">
-						<DownloadQueueItem
-							metadata={metadata}
-							downloading={downloading}
-							progress={progress}
-							formatKey={preferredFormat}
-						/>
-					</div>
-				) : fetchingMetadata ? (
+				{fetchingMetadata ? (
 					<div className="flex items-center gap-4 rounded-lg bg-[#1E293B] p-4">
 						<div className="size-16 animate-pulse rounded bg-[#334155]" />
 						<div className="flex flex-1 flex-col gap-2">
@@ -210,13 +208,21 @@ export default function DashboardPage() {
 							<div className="h-3 w-1/2 animate-pulse rounded bg-[#334155]" />
 						</div>
 					</div>
-				) : (
+				) : null}
+
+				{queue.length > 0 ? (
+					<div className="flex flex-col gap-2 overflow-y-auto">
+						{queue.map((item) => (
+							<DownloadQueueItem key={item.id} item={item} />
+						))}
+					</div>
+				) : !fetchingMetadata ? (
 					<div className="flex flex-1 items-center justify-center rounded-lg bg-[#1E293B] py-16">
 						<p className="text-sm text-muted-foreground">
 							{t("dashboard.queueEmpty")}
 						</p>
 					</div>
-				)}
+				) : null}
 			</div>
 		</div>
 	);

@@ -10,6 +10,9 @@ export const en: Translations = {
 		history: "History",
 		settings: "Settings",
 	},
+	sidebar: {
+		activeDownloads: "{{count}} downloading",
+	},
 	dashboard: {
 		title: "Dashboard",
 		description: "Download and manage your videos",
@@ -29,6 +32,8 @@ export const en: Translations = {
 		done: "Done",
 		formatSearch: "Search format...",
 		noFormatFound: "No match",
+		addToQueue: "Add to Queue",
+		queued: "Queued",
 	},
 	downloads: {
 		title: "Downloads",

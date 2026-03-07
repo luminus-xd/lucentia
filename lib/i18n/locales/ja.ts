@@ -8,6 +8,9 @@ export const ja = {
 		history: "履歴",
 		settings: "設定",
 	},
+	sidebar: {
+		activeDownloads: "{{count}}件ダウンロード中",
+	},
 	dashboard: {
 		title: "ダッシュボード",
 		description: "動画のダウンロードと管理",
@@ -27,6 +30,8 @@ export const ja = {
 		done: "完了",
 		formatSearch: "フォーマットを検索...",
 		noFormatFound: "該当なし",
+		addToQueue: "キューに追加",
+		queued: "待機中",
 	},
 	downloads: {
 		title: "ダウンロード",

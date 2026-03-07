@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { useInitialization } from "@/lib/hooks/useInitialization";
 import { useTranslation } from "@/lib/i18n";
@@ -8,12 +9,13 @@ import { useTranslation } from "@/lib/i18n";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
 	const { state } = useInitialization();
 	const { t } = useTranslation();
+	const router = useRouter();
 
 	useEffect(() => {
 		if (state === "needs-setup") {
-			window.location.href = "/setup";
+			router.push("/setup");
 		}
-	}, [state]);
+	}, [state, router]);
 
 	if (state !== "ready") {
 		return (

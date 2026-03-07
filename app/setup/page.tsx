@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Sparkles, Folder, ArrowRight, Loader2 } from "lucide-react";
 import { useInitialization } from "@/lib/hooks/useInitialization";
@@ -9,6 +10,7 @@ import { useTranslation } from "@/lib/i18n";
 export default function SetupPage() {
 	const { t } = useTranslation();
 	const { initialize } = useInitialization();
+	const router = useRouter();
 	const [savePath, setSavePath] = useState("");
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState("");
@@ -33,7 +35,7 @@ export default function SetupPage() {
 
 		try {
 			await initialize(savePath);
-			window.location.href = "/";
+			router.push("/");
 		} catch (e) {
 			setError(String(e));
 			setSubmitting(false);

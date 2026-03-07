@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex};
 use tauri::Emitter;
 use tokio::io::AsyncBufReadExt;
 use uuid::Uuid;
@@ -38,6 +38,65 @@ static RE_PROGRESS: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
+// ─── ダウンロード状態管理 ──────────────────────────────
+// フロントエンドがリロードしてもRust側で状態を保持し、復帰時に問い合わせられるようにする
+
+/// 各ダウンロードの現在の状態
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadStatusEntry {
+  pub id: String,
+  pub status: &'static str, // "downloading" | "completed" | "error"
+  pub percent: f64,
+  pub output_path: Option<String>,
+  pub error: Option<String>,
+}
+
+/// グローバルなダウンロード状態マップ
+/// フロントエンドが再接続したとき、ここに問い合わせて復帰する
+static DOWNLOAD_MANAGER: LazyLock<Mutex<HashMap<String, DownloadStatusEntry>>> =
+  LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn dm_set_downloading(id: &str) {
+  let mut map = DOWNLOAD_MANAGER.lock().unwrap();
+  map.insert(id.to_string(), DownloadStatusEntry {
+    id: id.to_string(),
+    status: "downloading",
+    percent: 0.0,
+    output_path: None,
+    error: None,
+  });
+}
+
+fn dm_update_progress(id: &str, percent: f64) {
+  let mut map = DOWNLOAD_MANAGER.lock().unwrap();
+  if let Some(entry) = map.get_mut(id) {
+    entry.percent = percent;
+  }
+}
+
+fn dm_set_completed(id: &str, output_path: &str) {
+  let mut map = DOWNLOAD_MANAGER.lock().unwrap();
+  if let Some(entry) = map.get_mut(id) {
+    entry.status = "completed";
+    entry.percent = 100.0;
+    entry.output_path = Some(output_path.to_string());
+  }
+}
+
+fn dm_set_error(id: &str, error: &str) {
+  let mut map = DOWNLOAD_MANAGER.lock().unwrap();
+  if let Some(entry) = map.get_mut(id) {
+    entry.status = "error";
+    entry.error = Some(error.to_string());
+  }
+}
+
+fn dm_remove(id: &str) {
+  let mut map = DOWNLOAD_MANAGER.lock().unwrap();
+  map.remove(id);
+}
+
 #[derive(Serialize)]
 pub struct VideoMetadata {
   pub title: String,
@@ -66,9 +125,22 @@ fn extract_thumbnail(output: &youtube_dl::YoutubeDlOutput) -> Option<String> {
 
 #[derive(Serialize, Clone)]
 struct DownloadProgress {
+  id: String,
   percent: f64,
   speed: Option<String>,
   eta: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+struct DownloadCompleteEvent {
+  id: String,
+  output_path: String,
+}
+
+#[derive(Serialize, Clone)]
+struct DownloadErrorEvent {
+  id: String,
+  error: String,
 }
 
 #[tauri::command]
@@ -157,6 +229,7 @@ fn format_duration(d: &serde_json::Value) -> Option<String> {
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub async fn download_video(
   app_handle: tauri::AppHandle,
+  download_id: String,
   url: String,
   audio_only: bool,
   folder_path: Option<String>,
@@ -326,11 +399,17 @@ pub async fn download_video(
     args.join(" ")
   );
 
-  if let Err(e) = run_yt_dlp_with_progress(&app_handle, &yt_dlp_path, &args, best_quality && !audio_only).await {
+  // ダウンロード状態をManagerに登録
+  dm_set_downloading(&download_id);
+
+  if let Err(e) = run_yt_dlp_with_progress(&app_handle, &yt_dlp_path, &download_id, &args, best_quality && !audio_only).await {
     let _ = history::add_entry(build_history_entry(
       &url, &filename_base, extension, best_quality,
       HistoryStatus::Failed, None, Some(e.clone()), thumbnail.clone(), None,
     ));
+    dm_set_error(&download_id, &e);
+    let _ = app_handle.emit("download-error", DownloadErrorEvent { id: download_id.clone(), error: e.clone() });
+    schedule_dm_cleanup(download_id);
     return Err(e);
   }
 
@@ -338,13 +417,16 @@ pub async fn download_video(
     let file_size = std::fs::metadata(&output_path).ok().map(|m| m.len());
     let size_str = file_size.map_or("不明".to_string(), |s| format!("{s} bytes"));
     log::info!("出力ファイル: {output_path} (サイズ: {size_str})");
-    let _ = app_handle.emit("download-progress", DownloadProgress { percent: 100.0, speed: None, eta: None });
+    let _ = app_handle.emit("download-progress", DownloadProgress { id: download_id.clone(), percent: 100.0, speed: None, eta: None });
 
     let _ = history::add_entry(build_history_entry(
       &url, &filename_base, extension, best_quality,
       HistoryStatus::Success, file_size, None, thumbnail, Some(output_path.clone()),
     ));
 
+    dm_set_completed(&download_id, &output_path);
+    let _ = app_handle.emit("download-complete", DownloadCompleteEvent { id: download_id.clone(), output_path: output_path.clone() });
+    schedule_dm_cleanup(download_id);
     Ok(output_path)
   } else {
     log::warn!("出力ファイルが存在しません: {output_path}");
@@ -354,6 +436,9 @@ pub async fn download_video(
       HistoryStatus::Failed, None, Some("error.file_not_found".to_string()), thumbnail, None,
     ));
 
+    dm_set_error(&download_id, "error.file_not_found");
+    let _ = app_handle.emit("download-error", DownloadErrorEvent { id: download_id.clone(), error: "error.file_not_found".to_string() });
+    schedule_dm_cleanup(download_id);
     Err("error.file_not_found".to_string())
   }
 }
@@ -453,6 +538,7 @@ fn build_yt_dlp_args(
 async fn run_yt_dlp_with_progress(
   app_handle: &tauri::AppHandle,
   yt_dlp_path: &Path,
+  download_id: &str,
   args: &[String],
   uses_separate_streams: bool,
 ) -> Result<(), String> {
@@ -530,7 +616,8 @@ async fn run_yt_dlp_with_progress(
 
           if percent > last_emitted {
             last_emitted = percent;
-            let _ = app_handle.emit("download-progress", DownloadProgress { percent, speed, eta });
+            dm_update_progress(download_id, percent);
+            let _ = app_handle.emit("download-progress", DownloadProgress { id: download_id.to_string(), percent, speed, eta });
           }
         }
       }
@@ -542,7 +629,7 @@ async fn run_yt_dlp_with_progress(
       last_emitted = 95.0;
       let _ = app_handle.emit(
         "download-progress",
-        DownloadProgress { percent: 95.0, speed: None, eta: None },
+        DownloadProgress { id: download_id.to_string(), percent: 95.0, speed: None, eta: None },
       );
     }
   }
@@ -570,6 +657,21 @@ async fn run_yt_dlp_with_progress(
   }
 
   Ok(())
+}
+
+/// 完了/エラー状態のエントリを一定時間後にManagerから削除する
+/// フロントエンドが復帰するまでの猶予を持たせるため60秒待つ
+fn schedule_dm_cleanup(id: String) {
+  tokio::spawn(async move {
+    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+    dm_remove(&id);
+  });
+}
+
+/// フロントエンドが復帰時に現在のダウンロード状態を問い合わせるコマンド
+#[tauri::command]
+pub fn get_download_statuses() -> Vec<DownloadStatusEntry> {
+  DOWNLOAD_MANAGER.lock().unwrap().values().cloned().collect()
 }
 
 /// Cookie関連のエラーかどうかを判定する
