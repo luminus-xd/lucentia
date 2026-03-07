@@ -15,7 +15,7 @@ use crate::commands::{
   list_downloaded_files, open_file, open_file_in_folder, reset_settings, save_settings,
   update_yt_dlp, validate_save_path,
 };
-use crate::downloader::{get_deno_dir, get_ffmpeg_dir, setup_binaries};
+use crate::downloader::setup_binaries;
 
 fn main() {
   // 環境に応じたPATH設定

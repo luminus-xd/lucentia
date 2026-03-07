@@ -548,7 +548,6 @@ async fn run_yt_dlp_with_progress(
     .stderr(std::process::Stdio::piped());
   #[cfg(windows)]
   {
-    use std::os::windows::process::CommandExt;
     cmd.creation_flags(crate::downloader::CREATE_NO_WINDOW);
   }
   let mut child = cmd.spawn()
